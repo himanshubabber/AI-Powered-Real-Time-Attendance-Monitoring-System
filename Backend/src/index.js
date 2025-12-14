@@ -1,12 +1,11 @@
-import dotenv from "dotenv"
+// 1. THIS MUST BE THE VERY FIRST LINE
+// This special syntax forces .env to load immediately
+import "dotenv/config"; 
+
 import connectDB from "./db/index.js";
-import {app} from './app.js'
-dotenv.config({
-    path: './.env'
-})
+import { app } from './app.js';
 
-
-
+// 2. CONNECT TO DATABASE
 connectDB()
 .then(() => {
     app.listen(process.env.PORT || 8000, () => {

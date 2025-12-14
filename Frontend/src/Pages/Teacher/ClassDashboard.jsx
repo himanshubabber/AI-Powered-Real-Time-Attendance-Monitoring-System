@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from "axios";
 import { Plus, Users, Calendar, Clock, Trash2, ArrowRight } from 'lucide-react';
+import { Copy, Check } from 'lucide-react';
 
 function ClassDashboard() {
   const navigate = useNavigate();
@@ -224,6 +225,23 @@ const handleCreateClass = async () => {
                       {cls.name}
                     </h3>
                     <p className="text-slate-500 text-sm mt-1">{cls.subject}</p>
+                    <div className="mt-2 flex items-center gap-2">
+  <span className="inline-block text-xs font-mono text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded select-all">
+    ID: {cls.id}
+  </span>
+  
+  <button
+    onClick={(e) => {
+      e.stopPropagation(); // Prevent navigating to class details
+      navigator.clipboard.writeText(cls.id);
+      alert("Class ID copied to clipboard!"); // Simple feedback
+    }}
+    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+    title="Copy Class ID"
+  >
+    <Copy size={14} />
+  </button>
+</div>
                   </div>
                   <button
                     onClick={(e) => handleDeleteClick(e, cls)}

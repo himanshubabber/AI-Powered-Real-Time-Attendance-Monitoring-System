@@ -11,6 +11,8 @@ import { useSelector } from 'react-redux';
 export default function StudentDashboard() {
   const dispatch = useDispatch();
 
+  const { name, rollNo, photo, accessToken } = useSelector((state) => state.studentAuth);
+
   const navigate = useNavigate();
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [classCode, setClassCode] = useState('');
@@ -93,7 +95,10 @@ export default function StudentDashboard() {
   try {
     const api = axios.create({
       baseURL: "http://localhost:8000",
-      withCredentials: true
+      withCredentials: true,
+      headers: {
+        'Authorization': `Bearer ${accessToken}` // 👈 DON'T FORGET THIS
+      }
     });
 
     const response = await api.post(
@@ -360,13 +365,15 @@ export default function StudentDashboard() {
                 Class Code
               </label>
               <input
-                type="text"
-                value={classCode}
-                onChange={(e) => setClassCode(e.target.value.toUpperCase())}
-                placeholder="e.g., MATH101ABC"
-                className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-lg font-mono tracking-wider uppercase"
-                maxLength={12}
-              />
+  type="text"
+  value={classCode}
+  // ✅ FIX 1: Remove .toUpperCase() so lowercase IDs work
+  onChange={(e) => setClassCode(e.target.value.trim())} 
+  placeholder="e.g., 693efa43ee92..."
+  className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-lg font-mono tracking-wider"
+  // ✅ FIX 2: Increase length (MongoDB IDs are 24 chars) or remove maxLength entirely
+  maxLength={50} 
+/>
               <p className="text-xs text-slate-500 mt-2">
                 Class codes are usually 6-12 characters long
               </p>

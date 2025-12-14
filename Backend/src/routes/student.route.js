@@ -9,7 +9,7 @@ import {
     getMyClasses
 } from "../controllers/student.controller.js";
 import {upload} from "../middlewares/multer.middleware.js"
-import verifyJWT from "../middlewares/studentAuth.middleware.js";
+import  verifyJWT  from "../middlewares/studentAuth.middleware.js";
 
 
 const router = Router()
@@ -17,7 +17,9 @@ const router = Router()
 router.route("/register").post(upload.single("profilePhoto"),registerStudent);
 router.route("/login").post(loginStudent)
 router.route("/logout").post(verifyJWT,logoutStudent);
-router.route("/class/:classId/attendance/:rollNo").get(verifyJWT,getStudentClassAttendance)
+// Remove /:rollNo so it accepts query parameters
+// Remove the "/:rollNo" part so it accepts the "?rollNo=" query
+router.route("/class/:classId/attendance/:rollNo").get(verifyJWT, getStudentClassAttendance);
 router.route("/join-class").post(verifyJWT,registerStudentToClass);
 router.route("/refresh-token").post(refreshAccessToken);
 router.route("/my-classes").get(verifyJWT,getMyClasses);

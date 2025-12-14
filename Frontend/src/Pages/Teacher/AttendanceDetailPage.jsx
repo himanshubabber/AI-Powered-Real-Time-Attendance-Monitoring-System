@@ -44,7 +44,7 @@ export default function AttendanceDetailPage() {
         });
 
         const res = await api.get(
-          `/api/v1/attendance/${classId}/${date}`
+          `/api/v1/teacher/class/${classId}/attendance/${date}`
         );
 
         setAttendanceData(res.data);

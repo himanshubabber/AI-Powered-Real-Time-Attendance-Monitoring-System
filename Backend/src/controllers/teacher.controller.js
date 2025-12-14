@@ -3,6 +3,8 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from 'jsonwebtoken';
 import { Teacher } from '../models/teacher.model.js';
 import ms from 'ms';
+import { uploadOnCloudinary } from '../utils/cloudinary.js';
+
 
 const generateAccessAndRefreshTokens = async (teacherId) => {
   try {

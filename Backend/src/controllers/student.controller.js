@@ -8,7 +8,7 @@ import { ApiResponse } from '../utils/ApiResponse.js';
 import jwt from 'jsonwebtoken';
 import ms from 'ms';
 import { uploadOnCloudinary } from '../utils/cloudinary.js';
-
+import { Attendance } from '../models/attendance.model.js';
 
 const generateAccessAndRefreshTokens = async (studentId) => {
   try {
@@ -24,9 +24,10 @@ const generateAccessAndRefreshTokens = async (studentId) => {
 };
 
 const registerStudent = async (req, res) => {
+  const studentPhotoLocalPath = req.file?.path; // Define outside try block for cleanup access
+
   try {
     const { name, rollNo, email, password, phoneNo } = req.body;
-    const studentPhotoLocalPath = req.file?.path;
 
     if (!studentPhotoLocalPath) {
       return res.status(400).json({ message: "Photo is required" });
@@ -36,14 +37,17 @@ const registerStudent = async (req, res) => {
     const form = new FormData();
     form.append("image", fs.createReadStream(studentPhotoLocalPath));
 
+    // Calling Python on Port 5001 (Correct!)
     const aiRes = await axios.post(
-      "http://127.0.0.1:5000/get_embedding",
+      "http://127.0.0.1:5001/get_embedding", 
       form,
       { headers: form.getHeaders() }
     );
 
     if (!aiRes.data.success) {
-      throw new Error("Face not detected");
+      // ⚠️ CLEANUP: Delete file if face not detected
+      if (fs.existsSync(studentPhotoLocalPath)) fs.unlinkSync(studentPhotoLocalPath);
+      throw new Error("Face not detected in image");
     }
 
     // ✅ 2. THEN UPLOAD TO CLOUDINARY
@@ -68,12 +72,15 @@ const registerStudent = async (req, res) => {
 
   } catch (error) {
     console.error("Register error:", error);
+    // ⚠️ CLEANUP: Delete file on any error
+    if (studentPhotoLocalPath && fs.existsSync(studentPhotoLocalPath)) {
+        fs.unlinkSync(studentPhotoLocalPath);
+    }
     return res.status(500).json({
       message: error.message
     });
   }
 };
-
 
 
 const loginStudent = async (req, res) => {
@@ -262,14 +269,16 @@ const registerStudentToClass = async (req, res) => {
     const { classId } = req.body;
     const studentId = req.student._id;
 
-    const cls = await Class.findById(classId);
+    // ✅ FIX 1: Populate 'teacher' to get the name
+    const cls = await Class.findById(classId).populate("teacher", "name");
+
     if (!cls) {
       return res.status(404).json({ message: "Class not found" });
     }
 
     // prevent duplicate enrollment
     if (cls.students.includes(studentId)) {
-      return res.status(400).json({ message: "Already enrolled in this class" });
+      return res.status(409).json({ message: "Already enrolled in this class" });
     }
 
     // add student → class
@@ -287,7 +296,8 @@ const registerStudentToClass = async (req, res) => {
         id: cls._id,
         name: cls.className,
         subject: cls.subject,
-        teacher: cls.teacherName,
+        // ✅ FIX 2: Correctly access the teacher name
+        teacher: cls.teacher?.name || "Unknown", 
         schedule: cls.schedule
       }
     });
@@ -297,6 +307,7 @@ const registerStudentToClass = async (req, res) => {
     res.status(500).json({ message: "Failed to join class" });
   }
 };
+
 
 const getMyClasses = async (req, res) => {
   try {

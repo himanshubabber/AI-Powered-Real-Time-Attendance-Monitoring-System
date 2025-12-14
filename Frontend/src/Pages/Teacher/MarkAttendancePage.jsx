@@ -2,6 +2,21 @@ import React, { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, X, Image } from 'lucide-react';
+import axios from 'axios'; // 👈 ADD THIS LINE
+
+
+// Helper: Convert Base64 Image to Blob for uploading
+const dataURLtoBlob = (dataurl) => {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
+};
 
 export default function MarkAttendancePage() {
   const navigate= useNavigate();
@@ -124,18 +139,57 @@ export default function MarkAttendancePage() {
   //   triggerFileInput();
   // };
 
-  const handleSubmit = () => {
-    const imageToSubmit = capturedImage || uploadedImage;
-    //IT WILL WRITTEN BY HIMANSHU
+  const handleSubmit = async () => {
+    // 1. Validation
+    if (!capturedImage && !uploadedImage) {
+      alert("Please capture or upload an image first.");
+      return;
+    }
 
+    try {
+      // 2. Show Loading State (Optional UI improvement)
+      // setIsLoading(true); // You can add a state for this if you want
 
+      // 3. Convert Image to File/Blob
+      let imageFile;
+      if (capturedImage) {
+        imageFile = dataURLtoBlob(capturedImage);
+      } else if (uploadedImage) {
+        imageFile = dataURLtoBlob(uploadedImage);
+      }
 
+      // 4. Prepare FormData
+      const formData = new FormData();
+      formData.append("classId", classId);
+      // 'groupPhoto' must match the backend upload.single("groupPhoto")
+      formData.append("groupPhoto", imageFile, "attendance.jpg"); 
 
+      // 5. API Call
+      const response = await axios.post(
+        "http://localhost:8000/api/v1/attendance/mark",
+        formData,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
 
-    navigate(`/teacher/auth/class/${classId}/`);
+      // 6. Success Handling
+      if (response.data.success) {
+        alert(`Attendance Marked! \n\n✅ Present: ${response.data.presentCount} students`);
+        navigate(`/teacher/auth/class/${classId}/`);
+      }
 
+    } catch (error) {
+      console.error("Mark attendance error:", error);
+      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to mark attendance";
+      alert(`Error: ${msg}`);
+    } 
   };
 
+  
   const currentImage = capturedImage || uploadedImage;
 
   return (

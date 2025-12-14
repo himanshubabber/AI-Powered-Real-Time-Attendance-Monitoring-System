@@ -71,14 +71,15 @@ useEffect(() => {
     // Example: navigate(`/class/${classData.id}/mark-attendance`)
   };
 
-  const handleDateClick = (date) => {
-    console.log('Navigate to attendance detail for date:', date);
-    const dateString = date.toISOString();
-    navigate(`${dateString}`);
-    // Add your navigation logic here
-    // Example: navigate(`/class/${classData.id}/attendance/${date}`)
+  const handleDateClick = (dateString) => {
+    const dateObj = new Date(dateString);
+    const simpleDate = dateObj.toISOString().split('T')[0];
+    
+    // ✅ FIX: 
+    // 1. Add "/auth" (because it's defined in main.jsx)
+    // 2. Add "/attendance" (because we just added it to main.jsx)
+    navigate(`/teacher/auth/class/${classId}/attendance/${simpleDate}`);
   };
-
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };

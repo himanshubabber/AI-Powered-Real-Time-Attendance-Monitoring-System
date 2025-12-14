@@ -27,48 +27,59 @@ export default function StudentLogin() {
     });
   };
 
-  const handleSubmit = async() => {
+  const handleSubmit = async () => {
     try {
-    if (!formData.email || !formData.password) {
-      alert("Please enter email and password");
-      return;
-    }
-
-    const api = axios.create({
-      baseURL: "http://localhost:8000",
-      withCredentials: true,
-    });
-
-    const response=await api.post(
-      "/api/v1/student/login",
-      {
-        email: formData.email,
-        password: formData.password,
+      if (!formData.email || !formData.password) {
+        alert("Please enter email and password");
+        return;
       }
-    );
 
-    const loggedInStudent = response.data.data.teacher;
+      const api = axios.create({
+        baseURL: "http://localhost:8000",
+        withCredentials: true,
+      });
 
-    dispatch(setStudentDetails(loggedInStudent));
+      const response = await api.post(
+        "/api/v1/student/login",
+        {
+          email: formData.email,
+          password: formData.password,
+        }
+      );
 
-    alert("Login successful 🎉");
+      // 🔍 DEBUG: Check what the backend actually sent
+      console.log("Login Response Data:", response.data.data);
 
-    // optional: store teacher info
-    // localStorage.setItem("teacher", JSON.stringify(response.data.teacher));
+      const responseData = response.data.data;
 
-    // redirect to dashboard
-    navigate(`/student/auth/`);
+      // ✅ FIX: Merge the student info WITH the access token
+      const payload = {
+        ...responseData.student,       // Name, email, etc.
+        accessToken: responseData.accessToken // 👈 THIS WAS MISSING
+      };
 
-  } catch (error) {
-    console.error("Login error:", error);
+      if (!payload.accessToken) {
+        console.error("⚠️ WARNING: Access Token is missing in response!");
+      }
 
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      "Invalid email or password";
+      
 
-    alert(message);
-  }
+      dispatch(setStudentDetails(payload));
+
+      alert("Login successful 🎉");
+
+      navigate(`/student/auth/`);
+
+    } catch (error) {
+      console.error("Login error:", error);
+
+      const message =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        "Invalid email or password";
+
+      alert(message);
+    }
   };
 
   return (

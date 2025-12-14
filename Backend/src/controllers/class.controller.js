@@ -2,12 +2,14 @@ import { Class } from '../models/class.model.js';
 import { Teacher } from '../models/teacher.model.js';
 import { Attendance } from '../models/attendance.model.js';
 
+// -----------------------------------------------------------------------------
+// 1. CREATE CLASS
+// -----------------------------------------------------------------------------
 const createClass = async (req, res) => {
   try {
     const { className, subject, noOfStudents, schedule } = req.body;
     const teacherId = req.teacher._id;
 
-    // basic validation
     if (!className || !subject) {
       return res.status(400).json({
         success: false,
@@ -15,18 +17,17 @@ const createClass = async (req, res) => {
       });
     }
 
-    // 1. Create the class
     const newClass = await Class.create({
       className,
       subject,
       teacher: teacherId,
-      students: [],               // will be filled later
-      schedule: schedule || [],   // 👈 schedule support
-      noOfStudents: noOfStudents || 0, // optional field
+      students: [],               
+      schedule: schedule || [],   
+      noOfStudents: Number(noOfStudents) || 0,
       attendanceHistory: [],
     });
 
-    // 2. Add class ID to teacher's classes array
+    // Add class ID to teacher's classes array
     await Teacher.findByIdAndUpdate(
       teacherId,
       { $push: { classes: newClass._id } },
@@ -48,6 +49,9 @@ const createClass = async (req, res) => {
   }
 };
 
+// -----------------------------------------------------------------------------
+// 2. GET ALL CLASSES (For Dashboard)
+// -----------------------------------------------------------------------------
 const getMyClasses = async (req, res) => {
   try {
     const teacherId = req.teacher._id;
@@ -70,28 +74,56 @@ const getMyClasses = async (req, res) => {
   }
 };
 
+// -----------------------------------------------------------------------------
+// 3. GET CLASS DETAILS (For Detail Page Graphs)
+// -----------------------------------------------------------------------------
 const getClassById = async (req, res) => {
   try {
     const { classId } = req.params;
     const teacherId = req.teacher._id;
 
+    // 1. Find the Class
     const classData = await Class.findOne({
       _id: classId,
-      teacher: teacherId, // 🔐 security: only owner teacher
-    })
-      .select("className subject noOfStudents schedule attendanceHistory")
-      .populate("attendanceHistory");
+      teacher: teacherId, // Security check
+    });
 
     if (!classData) {
-      return res.status(404).json({
-        success: false,
-        message: "Class not found",
-      });
+      return res.status(404).json({ success: false, message: "Class not found" });
     }
+
+    // 2. Fetch Attendance Records manually to calculate stats
+    const attendanceLogs = await Attendance.find({ classId }).sort({ date: -1 });
+
+    const totalStudents = classData.students.length || classData.noOfStudents || 0;
+
+    // 3. Calculate Stats for Frontend
+    const history = attendanceLogs.map((log) => {
+      const presentCount = log.presentStudents.length;
+      const absentCount = Math.max(0, totalStudents - presentCount);
+      
+      const percentage = totalStudents === 0 
+        ? 0 
+        : ((presentCount / totalStudents) * 100).toFixed(1);
+
+      return {
+        _id: log._id,
+        date: log.date,
+        presentCount,
+        absentCount,
+        attendancePercentage: Number(percentage)
+      };
+    });
+
+    // 4. Send combined data
+    const payload = {
+      ...classData.toObject(),
+      attendanceHistory: history // Override with calculated data
+    };
 
     return res.status(200).json({
       success: true,
-      class: classData,
+      class: payload,
     });
 
   } catch (error) {
@@ -103,8 +135,49 @@ const getClassById = async (req, res) => {
   }
 };
 
+// -----------------------------------------------------------------------------
+// 4. DELETE CLASS (New!)
+// -----------------------------------------------------------------------------
+const deleteClass = async (req, res) => {
+  try {
+    const { classId } = req.params;
+    const teacherId = req.teacher._id;
+
+    // 1. Delete the Class document
+    const deletedClass = await Class.findOneAndDelete({
+      _id: classId,
+      teacher: teacherId // Security: ensure ownership
+    });
+
+    if (!deletedClass) {
+      return res.status(404).json({ success: false, message: "Class not found" });
+    }
+
+    // 2. Remove Class ID from Teacher's list
+    await Teacher.findByIdAndUpdate(teacherId, {
+      $pull: { classes: classId }
+    });
+
+    // 3. (Optional) Delete associated attendance records
+    await Attendance.deleteMany({ classId: classId });
+
+    return res.status(200).json({
+      success: true,
+      message: "Class deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Delete class error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete class"
+    });
+  }
+};
+
 export {
     createClass,
     getMyClasses,
-    getClassById
-}
+    getClassById,
+    deleteClass 
+};

@@ -36,7 +36,7 @@ const router = createBrowserRouter(
             <Route path="" element={<ClassDashboard/>} />
             <Route path="class/:classId/">
                 <Route path="" element={<ClassDetailPage/>} />
-                <Route path=":date" element={<AttendanceDetailPage/>}/>
+                <Route path="attendance/:date" element={<AttendanceDetailPage/>}/>
                 <Route path="mark-attendance" element={<MarkAttendancePage/>} />
             </Route>  
         </Route>

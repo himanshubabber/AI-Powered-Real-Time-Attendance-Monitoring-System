@@ -3,28 +3,21 @@ import {
     markAttendance,
     getAttendanceDetail
 } from "../controllers/attendance.controller.js";
-import {upload} from "../middlewares/multer.middleware.js"
-import verifyJWT from "../middlewares/teacherAuth.middleware.js";
+import { upload } from "../middlewares/multer.middleware.js";
 
+// ⚠️ FIX: Use curly braces { } for named import
+import  verifyJWT  from "../middlewares/teacherAuth.middleware.js"; 
 
-const router = Router()
+const router = Router();
 
+// ✅ Mark Attendance Route
+router.route("/mark").post(
+    verifyJWT, 
+    upload.single("groupPhoto"), 
+    markAttendance
+);
 
-router.route("/:classId/:date").post(verifyJWT,getAttendanceDetail);
+// ✅ Get Attendance Detail Route
+router.route("/:classId/:date").post(verifyJWT, getAttendanceDetail);
 
-// router.route("/create").post(verifyJWT,createClass);
-// router.route("/my-classes").get(verifyJWT,getMyClasses);
-// router.route("/:classId").get(verifyJWT, getClassById);
-
-// //secured routes
-// router.route("/logout").post(verifyJWT,  logoutCustomer)
-// router.route("/refresh-token").post(refreshAccessToken)
-// router.route("/change-password").post(verifyJWT, changeCurrentPassword)
-// router.route("/current-user").get(verifyJWT, getCurrentCustomer)
-// router.route("/:customerId/customerDetails").get( getCustomerDetails)
-// router.route("/:customerId/toggle-isliveRequestTo-false").patch( toggleIsLiveRequestToFalse)
-// router.route("/update-profilePhoto").patch(verifyJWT, upload.single("profilePhoto"), updateProfilePhoto)
-// router.route("/update-customer-details").post(verifyJWT, updateCustomerDetails)
-// router.route("/past-requests").get(verifyJWT, getPastRequests)
-
-export default router
+export default router;
