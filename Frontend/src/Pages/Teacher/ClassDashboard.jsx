@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from "axios";
-import { Plus, Users, Calendar, Clock, Trash2, ArrowRight } from 'lucide-react';
-import { Copy, Check } from 'lucide-react';
+import { Plus, Users, Calendar, Clock, Trash2, ArrowRight, Copy } from 'lucide-react';
 
 function ClassDashboard() {
   const navigate = useNavigate();
   const [classes, setClasses] = useState([]);
 
-
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [classToDelete, setClassToDelete] = useState(null);
+  
   const [newClass, setNewClass] = useState({
     name: '',
     subject: '',
@@ -21,114 +20,94 @@ function ClassDashboard() {
 
   const colors = ['bg-blue-500', 'bg-purple-500', 'bg-green-500', 'bg-orange-500', 'bg-pink-500', 'bg-indigo-500'];
 
+  // --- FETCH CLASSES ---
   useEffect(() => {
-  const fetchClasses = async () => {
+    const fetchClasses = async () => {
+      try {
+        const api = axios.create({
+          baseURL: "http://localhost:8000",
+          withCredentials: true,
+        });
+
+        const response = await api.get("/api/v1/class/my-classes");
+
+        const formattedClasses = response.data.classes.map((cls, index) => ({
+          id: cls._id,
+          name: cls.className,
+          subject: cls.subject,
+          
+          // 🔥 FIX 1: Prioritize actual array length over stored number
+          students: (cls.students && Array.isArray(cls.students)) 
+            ? cls.students.length 
+            : (cls.noOfStudents || 0),
+            
+          schedule: cls.schedule,
+          color: colors[index % colors.length],
+        }));
+
+        setClasses(formattedClasses);
+
+      } catch (error) {
+        console.error("Fetch classes error:", error);
+        // Optional: don't alert on simple load errors to keep UI clean
+      }
+    };
+
+    fetchClasses();
+  }, []);
+
+  // --- CREATE CLASS ---
+  const handleCreateClass = async () => {
     try {
+      if (!newClass.name || !newClass.subject) {
+        alert("Class name and subject are required");
+        return;
+      }
+
+      const validSchedule = scheduleEntries.filter(s => s.day && s.time);
+      if (validSchedule.length === 0) {
+        alert("Please add at least one schedule entry");
+        return;
+      }
+
       const api = axios.create({
         baseURL: "http://localhost:8000",
         withCredentials: true,
       });
 
-      const response = await api.get("/api/v1/class/my-classes");
+      const response = await api.post("/api/v1/class/create", {
+        className: newClass.name,
+        subject: newClass.subject,
+        noOfStudents: Number(newClass.students) || 0,
+        schedule: validSchedule,
+      });
 
-      const colors = [
-        "bg-blue-500",
-        "bg-purple-500",
-        "bg-green-500",
-        "bg-orange-500",
-        "bg-pink-500",
-        "bg-indigo-500",
-      ];
+      const createdClass = response.data.class;
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
 
-      const formattedClasses = response.data.classes.map((cls, index) => ({
-        id: cls._id,
-        name: cls.className,
-        subject: cls.subject,
-        students: cls.noOfStudents || 0,
-        schedule: cls.schedule,
-        color: colors[index % colors.length],
-      }));
+      setClasses([
+        {
+          id: createdClass._id,
+          name: createdClass.className,
+          subject: createdClass.subject,
+          students: createdClass.noOfStudents || 0,
+          schedule: createdClass.schedule,
+          color: randomColor,
+        },
+        ...classes,
+      ]);
 
-      setClasses(formattedClasses);
+      setNewClass({ name: "", subject: "", students: "" });
+      setScheduleEntries([{ day: "", time: "" }]);
+      setShowModal(false);
 
     } catch (error) {
-      console.error("Fetch classes error:", error);
-      alert(
-        error.response?.data?.message ||
-        "Failed to load classes"
-      );
+      console.error("Create class error:", error);
+      alert(error.response?.data?.message || "Failed to create class");
     }
   };
 
-  fetchClasses();
-}, []);
-
-
-const handleCreateClass = async () => {
-  try {
-    // validation
-    if (!newClass.name || !newClass.subject) {
-      alert("Class name and subject are required");
-      return;
-    }
-
-    const validSchedule = scheduleEntries.filter(
-      (s) => s.day && s.time
-    );
-
-    if (validSchedule.length === 0) {
-      alert("Please add at least one schedule entry");
-      return;
-    }
-
-    const api = axios.create({
-      baseURL: "http://localhost:8000",
-      withCredentials: true,
-    });
-
-    // 🔥 API CALL
-    const response = await api.post("/api/v1/class/create", {
-      className: newClass.name,
-      subject: newClass.subject,
-      noOfStudents: Number(newClass.students) || 0,
-      schedule: validSchedule,
-    });
-
-    const createdClass = response.data.class;
-
-    // random color for UI
-    const randomColor =
-      colors[Math.floor(Math.random() * colors.length)];
-
-    // update UI
-    setClasses([
-      {
-        id: createdClass._id,
-        name: createdClass.className,
-        subject: createdClass.subject,
-        students: createdClass.noOfStudents || 0,
-        schedule: createdClass.schedule,
-        color: randomColor,
-      },
-      ...classes,
-    ]);
-
-    // reset modal state
-    setNewClass({ name: "", subject: "", students: "" });
-    setScheduleEntries([{ day: "", time: "" }]);
-    setShowModal(false);
-
-  } catch (error) {
-    console.error("Create class error:", error);
-
-    alert(
-      error.response?.data?.message ||
-      "Failed to create class"
-    );
-  }
-};
-
-
+  // --- SCHEDULE HELPERS ---
   const addScheduleEntry = () => {
     setScheduleEntries([...scheduleEntries, { day: '', time: '' }]);
   };
@@ -145,17 +124,33 @@ const handleCreateClass = async () => {
     setScheduleEntries(updated);
   };
 
+  // --- DELETE HANDLERS ---
   const handleDeleteClick = (e, cls) => {
     e.stopPropagation();
     setClassToDelete(cls);
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    if (classToDelete) {
+  const confirmDelete = async () => {
+    if (!classToDelete) return;
+
+    try {
+      // 🔥 FIX 2: Actually delete from Database (Backend)
+      const api = axios.create({
+        baseURL: "http://localhost:8000",
+        withCredentials: true,
+      });
+
+      await api.delete(`/api/v1/class/${classToDelete.id}`);
+
+      // If successful, remove from UI
       setClasses(classes.filter(c => c.id !== classToDelete.id));
       setShowDeleteModal(false);
       setClassToDelete(null);
+
+    } catch (error) {
+      console.error("Delete class error:", error);
+      alert(error.response?.data?.message || "Failed to delete class");
     }
   };
 
@@ -165,9 +160,9 @@ const handleCreateClass = async () => {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-linear-to-r from-blue-600 to-indigo-600 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -211,11 +206,9 @@ const handleCreateClass = async () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {classes.map((cls) => (
             <div
-  key={cls.id}
-  className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-200 overflow-hidden flex flex-col h-[340px]"
->
-
-
+              key={cls.id}
+              className="bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-200 overflow-hidden flex flex-col h-[340px]"
+            >
               <div className={`${cls.color} h-2`}></div>
               <div className="p-6 flex flex-col flex-1">
 
@@ -226,22 +219,21 @@ const handleCreateClass = async () => {
                     </h3>
                     <p className="text-slate-500 text-sm mt-1">{cls.subject}</p>
                     <div className="mt-2 flex items-center gap-2">
-  <span className="inline-block text-xs font-mono text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded select-all">
-    ID: {cls.id}
-  </span>
-  
-  <button
-    onClick={(e) => {
-      e.stopPropagation(); // Prevent navigating to class details
-      navigator.clipboard.writeText(cls.id);
-      alert("Class ID copied to clipboard!"); // Simple feedback
-    }}
-    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
-    title="Copy Class ID"
-  >
-    <Copy size={14} />
-  </button>
-</div>
+                      <span className="inline-block text-xs font-mono text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded select-all">
+                        ID: {cls.id}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(cls.id);
+                          alert("Class ID copied!");
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all"
+                        title="Copy Class ID"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
                   </div>
                   <button
                     onClick={(e) => handleDeleteClick(e, cls)}
@@ -273,14 +265,14 @@ const handleCreateClass = async () => {
                 </div>
 
                 <div className="mt-auto">
-  <button
-    onClick={() => navigate(`class/${cls.id}/`)}
-    className="w-full mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-blue-600 hover:text-blue-700 font-medium hover:bg-blue-50 py-2 rounded-lg transition-all group"
-  >
-    View Details
-    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-  </button>
-</div>
+                  <button
+                    onClick={() => navigate(`class/${cls.id}/`)}
+                    className="w-full mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-blue-600 hover:text-blue-700 font-medium hover:bg-blue-50 py-2 rounded-lg transition-all group"
+                  >
+                    View Details
+                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+                </div>
 
               </div>
             </div>
@@ -306,15 +298,13 @@ const handleCreateClass = async () => {
 
       {/* Create Class Modal */}
       {showModal && (
-  <div className="fixed inset-0 bg-transparent backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all my-8">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all my-8">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">Create New Class</h2>
             
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Class Name
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Class Name</label>
                 <input
                   type="text"
                   value={newClass.name}
@@ -325,9 +315,7 @@ const handleCreateClass = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Subject
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Subject</label>
                 <input
                   type="text"
                   value={newClass.subject}
@@ -338,9 +326,7 @@ const handleCreateClass = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Number of Students
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Number of Students</label>
                 <input
                   type="number"
                   value={newClass.students}
@@ -351,9 +337,7 @@ const handleCreateClass = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3">
-                  Class Schedule
-                </label>
+                <label className="block text-sm font-medium text-slate-700 mb-3">Class Schedule</label>
                 <div className="space-y-3">
                   {scheduleEntries.map((entry, index) => (
                     <div key={index} className="flex gap-2">
@@ -376,7 +360,7 @@ const handleCreateClass = async () => {
                         value={entry.time}
                         onChange={(e) => updateScheduleEntry(index, 'time', e.target.value)}
                         className="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                        placeholder="e.g., 9:00 AM - 10:30 AM"
+                        placeholder="e.g., 9-10 AM"
                       />
                       {scheduleEntries.length > 1 && (
                         <button
@@ -422,9 +406,8 @@ const handleCreateClass = async () => {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && classToDelete && (
-  <div className="fixed inset-0 bg-transparent backdrop-blur-sm flex items-center justify-center p-4 z-50">
-    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all">
-
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all">
             <div className="flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mx-auto mb-4">
               <Trash2 className="text-red-600" size={32} />
             </div>
@@ -455,4 +438,4 @@ const handleCreateClass = async () => {
   );
 }
 
-export default ClassDashboard
+export default ClassDashboard;

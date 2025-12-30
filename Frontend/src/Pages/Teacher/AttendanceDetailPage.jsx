@@ -1,286 +1,179 @@
-import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
-import {
-  ArrowLeft,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Download,
-  Search,
-  Filter,
-} from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { ArrowLeft, Download, CheckCircle, XCircle, Users, Search } from 'lucide-react';
 
-export default function AttendanceDetailPage() {
+export default function AttendanceDetail() {
   const { classId, date } = useParams();
   const navigate = useNavigate();
+  
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
+  const [filter, setFilter] = useState('All'); // 'All', 'Present', 'Absent'
 
-  const [attendanceData, setAttendanceData] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
-
-  /* ===========================
-     Load jsPDF
-  ============================ */
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-    script.async = true;
-    document.head.appendChild(script);
-
-    return () => document.head.removeChild(script);
-  }, []);
-
-  /* ===========================
-     Fetch attendance from backend
-  ============================ */
-  useEffect(() => {
-    const fetchAttendance = async () => {
+    const fetchDetail = async () => {
       try {
         const api = axios.create({
           baseURL: "http://localhost:8000",
           withCredentials: true,
         });
 
-        const res = await api.get(
-          `/api/v1/teacher/class/${classId}/attendance/${date}`
-        );
-
-        setAttendanceData(res.data);
+        // Calling the new backend endpoint
+        const response = await api.get(`/api/v1/attendance/class/${classId}/date/${date}`);
+        setData(response.data.data);
       } catch (error) {
-        console.error("Attendance fetch error:", error);
-        alert(
-          error.response?.data?.message ||
-            "Failed to load attendance data"
-        );
+        console.error("Error:", error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchAttendance();
+    fetchDetail();
   }, [classId, date]);
 
-  /* ===========================
-     Helper functions
-  ============================ */
-  const handleBackClick = () => {
-    navigate(-1);
-  };
-
-  const formatDate = (dateString) => {
-    const d = new Date(dateString);
-    return d.toLocaleDateString("en-IN", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
-
-  const handleExport = () => {
-    if (!window.jspdf) {
-      alert("PDF library still loading...");
-      return;
-    }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-
-    const { classInfo, students } = attendanceData;
-
-    doc.setFontSize(18);
-    doc.text(classInfo.name, 105, 15, { align: "center" });
-
-    doc.setFontSize(11);
-    doc.text(classInfo.subject, 105, 23, { align: "center" });
-    doc.text(formatDate(classInfo.date), 105, 29, { align: "center" });
-
-    let y = 45;
-    students.forEach((s) => {
-      doc.text(`${s.rollNo}`, 20, y);
-      doc.text(`${s.name}`, 50, y);
-      doc.text(`${s.status}`, 150, y);
-      y += 8;
-      if (y > 280) {
-        doc.addPage();
-        y = 20;
-      }
-    });
-
-    doc.save(
-      `Attendance_${classInfo.name}_${classInfo.date}.pdf`
-    );
-  };
-
-  /* ===========================
-     Loading state
-  ============================ */
-  if (!attendanceData) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-lg">
-        Loading attendance details...
-      </div>
-    );
-  }
-
-  /* ===========================
-     Filter logic
-  ============================ */
-  const filteredStudents = attendanceData.students.filter((s) => {
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.rollNo.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === "all" || s.status === filterStatus;
-
-    return matchesSearch && matchesFilter;
+  // Format Date for Header (e.g., "Tuesday, 30 December 2025")
+  const formattedDate = new Date(date).toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 
-  const { classInfo } = attendanceData;
+  // Filter Logic
+  const filteredStudents = data?.students.filter(student => {
+    if (filter === 'All') return true;
+    return student.status === filter;
+  }) || [];
 
-  /* ===========================
-     UI
-  ============================ */
+  if (loading) return <div className="p-10 text-center">Loading...</div>;
+  if (!data) return <div className="p-10 text-center">Record not found</div>;
+
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <div className="bg-linear-to-r from-blue-600 to-indigo-600 shadow-lg">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <button
-            onClick={handleBackClick}
-            className="flex items-center gap-2 text-white mb-4"
-          >
-            <ArrowLeft size={20} />
-            Back
-          </button>
-
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-white">
-                {classInfo.name}
-              </h1>
-              <p className="text-blue-100">
-                {formatDate(classInfo.date)}
-              </p>
-            </div>
-
-            <button
-              onClick={handleExport}
-              className="bg-white text-blue-600 px-5 py-2 rounded-lg flex items-center gap-2"
+    <div className="min-h-screen bg-slate-50">
+      {/* --- HEADER --- */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <button 
+              onClick={() => navigate(-1)} 
+              className="flex items-center text-slate-500 hover:text-blue-600 transition-colors"
             >
+              <ArrowLeft size={20} className="mr-2" />
+              Back
+            </button>
+            <button className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 font-medium">
               <Download size={18} />
               Export
             </button>
           </div>
+          
+          <h1 className="text-2xl font-bold text-slate-900">{formattedDate}</h1>
+          <p className="text-slate-500">Attendance Detail View</p>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard
-          label="Total Students"
-          value={classInfo.totalStudents}
-          icon={<Calendar />}
-        />
-        <StatCard
-          label="Present"
-          value={classInfo.present}
-          icon={<CheckCircle />}
-          color="text-green-600"
-        />
-        <StatCard
-          label="Absent"
-          value={classInfo.absent}
-          icon={<XCircle />}
-          color="text-red-600"
-        />
-        <StatCard
-          label="Attendance %"
-          value={`${(
-            (classInfo.present / classInfo.totalStudents) *
-            100
-          ).toFixed(1)}%`}
-          icon={<CheckCircle />}
-          color="text-purple-600"
-        />
-      </div>
-
-      {/* Search & Filter */}
-      <div className="max-w-7xl mx-auto px-6 mb-6 flex gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-3 text-slate-400" />
-          <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search student..."
-            className="w-full pl-10 py-2 border rounded-lg"
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        
+        {/* --- STATS CARDS --- */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard 
+            label="Total Students" 
+            value={data.totalStudents} 
+            color="bg-blue-50 text-blue-700" 
+          />
+          <StatCard 
+            label="Present" 
+            value={data.presentCount} 
+            color="bg-green-50 text-green-700" 
+          />
+          <StatCard 
+            label="Absent" 
+            value={data.absentCount} 
+            color="bg-red-50 text-red-700" 
+          />
+          <StatCard 
+            label="Attendance %" 
+            value={`${data.attendancePercentage}%`} 
+            color="bg-purple-50 text-purple-700" 
           />
         </div>
 
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className="border rounded-lg px-4"
-        >
-          <option value="all">All</option>
-          <option value="present">Present</option>
-          <option value="absent">Absent</option>
-        </select>
-      </div>
-
-      {/* Table */}
-      <div className="max-w-7xl mx-auto px-6 pb-10">
-        <table className="w-full bg-white rounded-lg overflow-hidden">
-          <thead className="bg-slate-100">
-            <tr>
-              <th className="p-4 text-left">Roll No</th>
-              <th className="p-4 text-left">Name</th>
-              <th className="p-4 text-left">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredStudents.map((s) => (
-              <tr key={s.id} className="border-t">
-                <td className="p-4">{s.rollNo}</td>
-                <td className="p-4">{s.name}</td>
-                <td className="p-4">
-                  {s.status === "present" ? (
-                    <span className="text-green-600 font-semibold">
-                      Present
-                    </span>
-                  ) : (
-                    <span className="text-red-600 font-semibold">
-                      Absent
-                    </span>
-                  )}
-                </td>
-              </tr>
+        {/* --- FILTERS & LIST --- */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          
+          {/* Tabs */}
+          <div className="flex border-b border-slate-200">
+            {['All', 'Present', 'Absent'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`flex-1 py-4 text-sm font-semibold transition-colors ${
+                  filter === f 
+                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' 
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {f}
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
 
-        {filteredStudents.length === 0 && (
-          <p className="text-center mt-6 text-slate-500">
-            No students found
-          </p>
-        )}
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="col-span-3">Roll No</div>
+            <div className="col-span-6">Name</div>
+            <div className="col-span-3 text-right">Status</div>
+          </div>
+
+          {/* Student List */}
+          <div className="divide-y divide-slate-100">
+            {filteredStudents.length > 0 ? (
+              filteredStudents.map((student) => (
+                <div key={student._id} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
+                  
+                  {/* Roll No */}
+                  <div className="col-span-3 font-mono text-sm text-slate-600">
+                    {student.rollNo || "N/A"}
+                  </div>
+                  
+                  {/* Name */}
+                  <div className="col-span-6 font-medium text-slate-900">
+                    {student.name}
+                  </div>
+                  
+                  {/* Status Badge */}
+                  <div className="col-span-3 flex justify-end">
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
+                      student.status === 'Present' 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {student.status === 'Present' ? (
+                        <CheckCircle size={14} />
+                      ) : (
+                        <XCircle size={14} />
+                      )}
+                      {student.status}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-slate-500">
+                No students found for this filter.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ===========================
-   Small reusable stat card
-============================ */
-function StatCard({ label, value, icon, color = "text-slate-900" }) {
+// Simple Helper Component for Stats
+function StatCard({ label, value, color }) {
   return (
-    <div className="bg-white p-6 rounded-xl shadow flex items-center gap-4">
-      <div className="text-blue-600">{icon}</div>
-      <div>
-        <p className="text-sm text-slate-500">{label}</p>
-        <p className={`text-2xl font-bold ${color}`}>{value}</p>
-      </div>
+    <div className={`p-4 rounded-xl ${color}`}>
+      <p className="text-xs font-semibold uppercase opacity-80 mb-1">{label}</p>
+      <p className="text-2xl font-bold">{value}</p>
     </div>
   );
 }

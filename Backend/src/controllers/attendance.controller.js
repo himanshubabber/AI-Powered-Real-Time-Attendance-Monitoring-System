@@ -212,3 +212,70 @@ export const getStudentClassAttendance = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch attendance" });
   }
 };
+
+
+
+
+export const getAttendanceByDate = async (req, res) => {
+  try {
+    const { classId, date } = req.params;
+
+    // 1. Convert string date (YYYY-MM-DD) to Date object range
+    // We search for the record that matches the date part
+    const queryDate = new Date(date);
+    const nextDay = new Date(date);
+    nextDay.setDate(queryDate.getDate() + 1);
+
+    // 2. Fetch the Class (To get ALL enrolled students)
+    const classData = await Class.findById(classId).populate('students');
+    if (!classData) return res.status(404).json({ message: "Class not found" });
+
+    // 3. Fetch the Attendance Record (To get PRESENT students)
+    const attendanceRecord = await Attendance.findOne({
+      classId: classId,
+      date: {
+        $gte: queryDate,
+        $lt: nextDay
+      }
+    }).populate('presentStudents');
+
+    // 4. Logic: Compare All Students vs Present Students
+    const allStudents = classData.students || [];
+    const presentList = attendanceRecord ? attendanceRecord.presentStudents : [];
+    
+    // Create a Set of Present IDs for fast lookup
+    const presentIds = new Set(presentList.map(s => s._id.toString()));
+
+    // Build final list with Status
+    const studentStatusList = allStudents.map(student => {
+      // Handle potential nulls if students were deleted
+      if (!student) return null; 
+      
+      const isPresent = presentIds.has(student._id.toString());
+      return {
+        _id: student._id,
+        name: student.name,
+        rollNo: student.rollNo, // Assuming your Student model has rollNo
+        status: isPresent ? "Present" : "Absent"
+      };
+    }).filter(s => s !== null);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        date: date,
+        totalStudents: allStudents.length,
+        presentCount: presentList.length,
+        absentCount: allStudents.length - presentList.length,
+        attendancePercentage: allStudents.length > 0 
+          ? ((presentList.length / allStudents.length) * 100).toFixed(1) 
+          : 0,
+        students: studentStatusList
+      }
+    });
+
+  } catch (error) {
+    console.error("Get attendance detail error:", error);
+    return res.status(500).json({ message: "Server Error" });
+  }
+};

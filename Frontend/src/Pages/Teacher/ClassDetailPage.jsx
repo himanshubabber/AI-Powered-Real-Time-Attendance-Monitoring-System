@@ -1,85 +1,85 @@
-import React, { useState,useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
-import {  useParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, Users, Clock, CheckCircle, XCircle, TrendingUp } from 'lucide-react';
 
 export default function ClassDetailPage() {
-  const navigate= useNavigate();
+  const navigate = useNavigate();
   const { classId } = useParams();
-  // Sample class data - you'll pass this from the previous page
- const [classData, setClassData] = useState(null);
- const [attendanceRecords, setAttendanceRecords] = useState([]);
-useEffect(() => {
-  const fetchClassDetail = async () => {
-    try {
-      const api = axios.create({
-        baseURL: "http://localhost:8000",
-        withCredentials: true,
-      });
-
-      const response = await api.get(`/api/v1/class/${classId}`);
-
-      const cls = response.data.class;
-
-      // 1️⃣ Class basic data
-      setClassData({
-        id: cls._id,
-        name: cls.className,
-        subject: cls.subject,
-        students: cls.noOfStudents || cls.students?.length || 0,
-        schedule: cls.schedule || [],
-      });
-
-      // 2️⃣ Attendance history (REAL DATA ONLY)
-      const records = (cls.attendanceHistory || []).map((att) => ({
-        date: att.date,
-        present: att.presentCount,
-        absent: att.absentCount,
-        percentage: att.attendancePercentage, // ✅ correct field
-      }));
-
-      setAttendanceRecords(records);
-
-    } catch (error) {
-      console.error("Fetch class detail error:", error);
-      alert(
-        error.response?.data?.message ||
-        "Failed to load class details"
-      );
-    }
-  };
-
-  fetchClassDetail();
-}, [classId]);
-
-
-
-  // Sample attendance records
   
+  const [classData, setClassData] = useState(null);
+  const [attendanceRecords, setAttendanceRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    const fetchClassDetail = async () => {
+      try {
+        const api = axios.create({
+          baseURL: "http://localhost:8000",
+          withCredentials: true,
+        });
+
+        const response = await api.get(`/api/v1/class/${classId}`);
+        const cls = response.data.class;
+
+        // 🔥 LOGIC FIX: Check if 'students' array exists to get the REAL count
+        const realStudentCount = (cls.students && Array.isArray(cls.students)) 
+          ? cls.students.length 
+          : (cls.noOfStudents || 0);
+
+        // 1️⃣ Set Class Data
+        setClassData({
+          id: cls._id,
+          name: cls.className,
+          subject: cls.subject,
+          students: realStudentCount, // Use the calculated real count
+          schedule: cls.schedule || [],
+        });
+
+        // 2️⃣ Set Attendance History
+        const records = (cls.attendanceHistory || []).map((att) => ({
+          date: att.date,
+          present: att.presentCount,
+          absent: att.absentCount,
+          percentage: att.attendancePercentage,
+        }));
+
+        setAttendanceRecords(records);
+
+      } catch (error) {
+        console.error("Fetch class detail error:", error);
+        // Optional: Redirect back if class not found
+        // navigate("/teacher/auth/");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClassDetail();
+  }, [classId]);
+
+  // --- NAVIGATION HANDLERS ---
+  
   const handleBackClick = () => {
-    navigate("/teacher/auth/")
-
-    // Add your navigation logic here
-    // Example: window.history.back() or navigate('/classes')
+    navigate("/teacher/auth/");
   };
 
   const handleMarkAttendance = () => {
-    console.log('Navigate to mark attendance page');
-    // Add your navigation logic here
-    // Example: navigate(`/class/${classData.id}/mark-attendance`)
+    // Navigate to the marking page for this class
+    navigate(`/teacher/auth/class/${classId}/mark-attendance`);
   };
 
   const handleDateClick = (dateString) => {
+    // Format date to YYYY-MM-DD for the URL
     const dateObj = new Date(dateString);
     const simpleDate = dateObj.toISOString().split('T')[0];
     
-    // ✅ FIX: 
-    // 1. Add "/auth" (because it's defined in main.jsx)
-    // 2. Add "/attendance" (because we just added it to main.jsx)
+    // Navigate to the specific day view
     navigate(`/teacher/auth/class/${classId}/attendance/${simpleDate}`);
   };
+
+  // --- HELPER FUNCTIONS ---
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -87,17 +87,34 @@ useEffect(() => {
   };
 
   const averageAttendance = attendanceRecords.length > 0
-    ? (attendanceRecords.reduce((sum, record) => sum + record.percentage, 0) / attendanceRecords.length).toFixed(2)
+    ? (attendanceRecords.reduce((sum, record) => sum + record.percentage, 0) / attendanceRecords.length).toFixed(1)
     : 0;
 
+  // --- RENDER ---
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-600 text-lg animate-pulse">Loading class details...</p>
+      </div>
+    );
+  }
+
+  if (!classData) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <p className="text-slate-600 text-lg">Class not found.</p>
+        <button onClick={handleBackClick} className="text-blue-600 hover:underline">
+          Go Back
+        </button>
+      </div>
+    );
+  }
+
   return (
-  !classData ? (
-    <div className="min-h-screen flex items-center justify-center">
-      <p className="text-slate-600 text-lg">Loading class details...</p>
-    </div>
-  ):<div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="bg-linear-to-r from-blue-600 to-indigo-600 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <button
             onClick={handleBackClick}
@@ -113,7 +130,7 @@ useEffect(() => {
               <p className="text-blue-100">{classData.subject}</p>
             </div>
             <button
-              onClick={()=>navigate("mark-attendance")}
+              onClick={handleMarkAttendance}
               className="flex items-center gap-2 bg-white text-blue-600 hover:bg-blue-50 px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               <CheckCircle size={20} />
@@ -125,6 +142,7 @@ useEffect(() => {
 
       {/* Class Info & Stats */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -170,29 +188,35 @@ useEffect(() => {
               </div>
               <div>
                 <p className="text-slate-500 text-sm">Schedule</p>
-                <p className="text-sm font-semibold text-slate-900">{classData.schedule.length} days/week</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {classData.schedule.length} days/week
+                </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Class Schedule */}
+        {/* Schedule */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-8">
           <h2 className="text-xl font-bold text-slate-900 mb-4">Class Schedule</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {classData.schedule.map((sch, idx) => (
-              <div key={idx} className="flex items-center gap-3 bg-slate-50 rounded-lg p-4">
-                <Calendar className="text-blue-600" size={20} />
-                <div>
-                  <p className="font-semibold text-slate-900">{sch.day}</p>
-                  <p className="text-sm text-slate-600">{sch.time}</p>
+          {classData.schedule.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {classData.schedule.map((sch, idx) => (
+                <div key={idx} className="flex items-center gap-3 bg-slate-50 rounded-lg p-4">
+                  <Calendar className="text-blue-600" size={20} />
+                  <div>
+                    <p className="font-semibold text-slate-900">{sch.day}</p>
+                    <p className="text-sm text-slate-600">{sch.time}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-slate-500 italic">No schedule set.</p>
+          )}
         </div>
 
-        {/* Attendance Records */}
+        {/* Attendance History */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <h2 className="text-xl font-bold text-slate-900 mb-6">Attendance History</h2>
           

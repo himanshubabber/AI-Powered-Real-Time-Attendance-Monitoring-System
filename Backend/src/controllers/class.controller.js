@@ -54,26 +54,43 @@ const createClass = async (req, res) => {
 // -----------------------------------------------------------------------------
 const getMyClasses = async (req, res) => {
   try {
-    const teacherId = req.teacher._id;
+    // 1. Find classes created by this teacher
+    // .select() ensures we get the 'students' array to count it
+    const classes = await Class.find({ teacher: req.user._id })
+                               .populate('students'); // OPTIONAL: Filter dead links if needed
 
-    const classes = await Class.find({ teacher: teacherId })
-      .select("className subject noOfStudents schedule")
-      .sort({ createdAt: -1 });
+    // 2. Map the data to ensure 'noOfStudents' is accurate
+    const classData = classes.map((cls) => {
+      
+      // 🔥 CRITICAL FIX: 
+      // Filter out any 'null' students (in case you deleted them from DB but not from the Class list)
+      // Then count the real length.
+      const realStudentCount = cls.students ? cls.students.filter(s => s !== null).length : 0;
 
-    return res.status(200).json({
-      success: true,
-      classes,
+      return {
+        _id: cls._id,
+        className: cls.className,
+        subject: cls.subject,
+        schedule: cls.schedule,
+        students: cls.students, // Send the array (optional)
+        
+        // 🔥 This overrides the database's wrong number "10" with the real count "5"
+        noOfStudents: realStudentCount 
+      };
     });
 
+    res.status(200).json({
+      success: true,
+      classes: classData,
+    });
   } catch (error) {
-    console.error("Fetch classes error:", error);
-    return res.status(500).json({
+    console.error(error);
+    res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Server Error",
     });
   }
 };
-
 // -----------------------------------------------------------------------------
 // 3. GET CLASS DETAILS (For Detail Page Graphs)
 // -----------------------------------------------------------------------------
