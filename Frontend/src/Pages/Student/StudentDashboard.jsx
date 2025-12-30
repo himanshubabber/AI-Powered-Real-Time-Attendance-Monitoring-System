@@ -1,153 +1,162 @@
-import React, { useState ,useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, BookOpen, Users, Calendar, TrendingUp, ArrowRight, X, LogOut } from 'lucide-react';
 import axios from "axios";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { clearStudentDetails } from '../../store/studentAuthSlice.js';
-import { useSelector } from 'react-redux';
-// adjust path if needed
-
 
 export default function StudentDashboard() {
   const dispatch = useDispatch();
-
-  const { name, rollNo, photo, accessToken } = useSelector((state) => state.studentAuth);
-
   const navigate = useNavigate();
+
+  // 1. Get Student Info from Redux
+  const { name, rollNo, accessToken } = useSelector((state) => state.studentAuth);
+
+  // 2. Local State
+  const [enrolledClasses, setEnrolledClasses] = useState([]);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [classCode, setClassCode] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // Sample student data
-
-
-  // Sample enrolled classes
-  const [enrolledClasses, setEnrolledClasses] = useState([]);
-
-  const studentInfo = useSelector((state) => ({
-  name: state.studentAuth.name,
-  rollNo: state.studentAuth.rollNo,
-  photo: state.studentAuth.photo,
-}));
-
+  // --- FETCH CLASSES ---
   useEffect(() => {
-  const fetchEnrolledClasses = async () => {
+    // Safety Check: If no token, don't fetch (or redirect)
+    if (!accessToken) return;
+
+    const fetchEnrolledClasses = async () => {
+      try {
+        const api = axios.create({
+          baseURL: "http://localhost:8000",
+          withCredentials: true,
+          headers: {
+            'Authorization': `Bearer ${accessToken}` // 🔥 FIX 1: Add Token
+          }
+        });
+
+        const res = await api.get("/api/v1/student/my-classes");
+
+        // Normalize backend data → UI format
+        const formattedClasses = res.data.classes.map((cls) => ({
+          id: cls._id,
+          name: cls.className,
+          subject: cls.subject,
+          teacher: cls.teacherName || "Unknown Teacher",
+          schedule: cls.schedule || [],
+          attendance: cls.percentage || 0, // Using percentage from backend
+          totalClasses: cls.totalSessions || 0,
+          attended: cls.presentCount || 0,
+          color: "bg-green-500", 
+        }));
+
+        setEnrolledClasses(formattedClasses);
+
+      } catch (error) {
+        console.error("Fetch classes error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEnrolledClasses();
+  }, [accessToken]); // dependency on accessToken
+
+  // --- LOGOUT ---
+  const handleLogout = async () => {
+    try {
+      const api = axios.create({
+        baseURL: "http://localhost:8000",
+        withCredentials: true
+      });
+
+      await api.post("/api/v1/student/logout");
+      dispatch(clearStudentDetails());
+      navigate("/student/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      // Force logout on frontend even if backend fails
+      dispatch(clearStudentDetails());
+      navigate("/student/");
+    }
+  };
+
+  // --- JOIN CLASS ---
+  const handleJoinClass = async () => {
+    if (!classCode.trim()) {
+      alert("Please enter a valid class code");
+      return;
+    }
+
     try {
       const api = axios.create({
         baseURL: "http://localhost:8000",
         withCredentials: true,
+        headers: {
+          'Authorization': `Bearer ${accessToken}` // 🔥 FIX 1: Add Token
+        }
       });
 
-      const res = await api.get("/api/v1/student/my-classes");
+      const response = await api.post("/api/v1/student/join-class", {
+        classId: classCode.trim()
+      });
 
-      // normalize backend data → UI format
-      const formattedClasses = res.data.classes.map((cls) => ({
-        id: cls._id,
-        name: cls.className,
-        subject: cls.subject,
-        teacher: cls.teacherName,
-        schedule: cls.schedule,
-        attendance: cls.attendance,
-        totalClasses: cls.totalClasses,
-        attended: cls.attended,
-        color: "bg-green-500", // optional / static
-      }));
+      alert("Successfully joined the class!");
 
-      setEnrolledClasses(formattedClasses);
+      // 🔥 FIX 2: Manually format the new class so UI updates instantly
+      if (response.data?.class) {
+        const raw = response.data.class;
+        const newClassFormatted = {
+            id: raw._id,
+            name: raw.className,
+            subject: raw.subject,
+            teacher: raw.teacherName || "Teacher", // Handle missing name
+            schedule: raw.schedule || [],
+            attendance: 0, // New class starts at 0%
+            totalClasses: 0,
+            attended: 0,
+            color: "bg-green-500"
+        };
+        setEnrolledClasses((prev) => [newClassFormatted, ...prev]);
+      }
+
+      setClassCode("");
+      setShowJoinModal(false);
 
     } catch (error) {
-      console.error("Fetch classes error:", error);
-      alert("Failed to load enrolled classes");
+      console.error("Join class error:", error);
+      alert(error.response?.data?.message || "Failed to join class. Check the code.");
     }
   };
-
-  fetchEnrolledClasses();
-}, []);
-
-
-  const handleLogout = async () => {
-  try {
-    const api = axios.create({
-      baseURL: "http://localhost:8000",
-      withCredentials: true
-    });
-
-    await api.post("/api/v1/student/logout");
-
-    // 🔥 Clear redux state
-    dispatch(clearStudentDetails());
-
-    // 🔥 Redirect to login page
-    navigate("/student/");
-
-  } catch (error) {
-    console.error("Logout failed:", error);
-    alert("Logout failed. Please try again.");
-  }
-};
-
-
- const handleJoinClass = async () => {
-  if (!classCode.trim()) {
-    alert("Please enter a valid class code");
-    return;
-  }
-
-  try {
-    const api = axios.create({
-      baseURL: "http://localhost:8000",
-      withCredentials: true,
-      headers: {
-        'Authorization': `Bearer ${accessToken}` // 👈 DON'T FORGET THIS
-      }
-    });
-
-    const response = await api.post(
-      "/api/v1/student/join-class",
-      {
-        classId: classCode   // 👈 classCode IS class._id
-      }
-    );
-
-    alert("Successfully joined the class!");
-
-    // OPTIONAL: add newly joined class to UI
-    if (response.data?.class) {
-      setEnrolledClasses((prev) => [response.data.class, ...prev]);
-    }
-
-    setClassCode("");
-    setShowJoinModal(false);
-
-  } catch (error) {
-    console.error("Join class error:", error);
-    alert(
-      error.response?.data?.message ||
-      "Failed to join class"
-    );
-  }
-};
-
-
 
   const handleClassClick = (classId) => {
-    navigate(`class/${classId}/`)
+    navigate(`class/${classId}/`);
   };
 
+  // --- UI HELPERS ---
   const getAttendanceColor = (percentage) => {
-    if (percentage >= 90) return 'text-green-600';
-    if (percentage >= 75) return 'text-yellow-600';
+    const p = Number(percentage);
+    if (p >= 90) return 'text-green-600';
+    if (p >= 75) return 'text-yellow-600';
     return 'text-red-600';
   };
 
   const getAttendanceBgColor = (percentage) => {
-    if (percentage >= 90) return 'bg-green-100';
-    if (percentage >= 75) return 'bg-yellow-100';
+    const p = Number(percentage);
+    if (p >= 90) return 'bg-green-100';
+    if (p >= 75) return 'bg-yellow-100';
     return 'bg-red-100';
   };
 
   const overallAttendance = enrolledClasses.length > 0
-    ? (enrolledClasses.reduce((sum, cls) => sum + cls.attendance, 0) / enrolledClasses.length).toFixed(1)
+    ? (enrolledClasses.reduce((sum, cls) => sum + Number(cls.attendance), 0) / enrolledClasses.length).toFixed(1)
     : 0;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -156,8 +165,9 @@ export default function StudentDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-4xl font-bold text-white mb-2">Welcome back, {studentInfo.name}!</h1>
-              <p className="text-green-100">Student ID: {studentInfo.studentId}</p>
+              <h1 className="text-4xl font-bold text-white mb-2">Welcome back, {name}!</h1>
+              {/* 🔥 FIX 4: Corrected variable name to rollNo */}
+              <p className="text-green-100">Roll No: {rollNo}</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -170,6 +180,7 @@ export default function StudentDashboard() {
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 bg-white/10 text-white hover:bg-white/20 px-4 py-3 rounded-xl font-semibold transition-all"
+                title="Logout"
               >
                 <LogOut size={20} />
               </button>
@@ -299,7 +310,7 @@ export default function StudentDashboard() {
                       </div>
                       <div className="mt-2 bg-white rounded-full h-2 overflow-hidden">
                         <div
-                          className={`h-full ${cls.attendance >= 90 ? 'bg-green-500' : cls.attendance >= 75 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                          className={`h-full ${Number(cls.attendance) >= 90 ? 'bg-green-500' : Number(cls.attendance) >= 75 ? 'bg-yellow-500' : 'bg-red-500'}`}
                           style={{ width: `${cls.attendance}%` }}
                         ></div>
                       </div>
@@ -364,18 +375,18 @@ export default function StudentDashboard() {
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Class Code
               </label>
+              
+              {/* 🔥 FIX 3: Removed toUpperCase and fixed MaxLength */}
               <input
-  type="text"
-  value={classCode}
-  // ✅ FIX 1: Remove .toUpperCase() so lowercase IDs work
-  onChange={(e) => setClassCode(e.target.value.trim())} 
-  placeholder="e.g., 693efa43ee92..."
-  className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-lg font-mono tracking-wider"
-  // ✅ FIX 2: Increase length (MongoDB IDs are 24 chars) or remove maxLength entirely
-  maxLength={50} 
-/>
+                type="text"
+                value={classCode}
+                onChange={(e) => setClassCode(e.target.value.trim())}
+                placeholder="e.g., 65a43f... (Teacher's Class ID)"
+                className="w-full px-4 py-3 border-2 border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-lg font-mono tracking-wider"
+              />
+              
               <p className="text-xs text-slate-500 mt-2">
-                Class codes are usually 6-12 characters long
+                Class codes are usually 24 characters (MongoDB ID)
               </p>
             </div>
 

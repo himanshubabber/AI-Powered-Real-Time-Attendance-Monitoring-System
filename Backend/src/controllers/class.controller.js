@@ -54,41 +54,38 @@ const createClass = async (req, res) => {
 // -----------------------------------------------------------------------------
 const getMyClasses = async (req, res) => {
   try {
-    // 1. Find classes created by this teacher
-    // .select() ensures we get the 'students' array to count it
-    const classes = await Class.find({ teacher: req.user._id })
-                               .populate('students'); // OPTIONAL: Filter dead links if needed
+    const teacherId = req.teacher._id;
 
-    // 2. Map the data to ensure 'noOfStudents' is accurate
+    // 1. Fetch classes
+    const classes = await Class.find({ teacher: teacherId })
+      .populate('students') 
+      .sort({ createdAt: -1 });
+
+    // 2. Safe Map (Prevents crashing if students is null)
     const classData = classes.map((cls) => {
-      
-      // 🔥 CRITICAL FIX: 
-      // Filter out any 'null' students (in case you deleted them from DB but not from the Class list)
-      // Then count the real length.
-      const realStudentCount = cls.students ? cls.students.filter(s => s !== null).length : 0;
+      // Safety Check: Ensure cls.students exists before filtering
+      const validStudents = (cls.students && Array.isArray(cls.students)) 
+        ? cls.students.filter(s => s !== null) 
+        : [];
 
       return {
         _id: cls._id,
         className: cls.className,
         subject: cls.subject,
         schedule: cls.schedule,
-        students: cls.students, // Send the array (optional)
-        
-        // 🔥 This overrides the database's wrong number "10" with the real count "5"
-        noOfStudents: realStudentCount 
+        students: validStudents, 
+        noOfStudents: validStudents.length // Real count
       };
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       classes: classData,
     });
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    console.error("Fetch classes error:", error); // <--- Check your terminal for this!
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 // -----------------------------------------------------------------------------

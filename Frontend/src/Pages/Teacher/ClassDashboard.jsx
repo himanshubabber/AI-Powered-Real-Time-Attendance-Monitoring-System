@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from "axios";
-import { Plus, Users, Calendar, Clock, Trash2, ArrowRight, Copy } from 'lucide-react';
+import { Plus, Users, Calendar, Trash2, ArrowRight, Copy } from 'lucide-react';
 
 function ClassDashboard() {
   const navigate = useNavigate();
+  
+  // --- STATE ---
   const [classes, setClasses] = useState([]);
-
+  const [loading, setLoading] = useState(true); // <--- Loading State
+  
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [classToDelete, setClassToDelete] = useState(null);
@@ -36,7 +39,7 @@ function ClassDashboard() {
           name: cls.className,
           subject: cls.subject,
           
-          // 🔥 FIX 1: Prioritize actual array length over stored number
+          // 🔥 FIX: Prioritize actual array length over stored number
           students: (cls.students && Array.isArray(cls.students)) 
             ? cls.students.length 
             : (cls.noOfStudents || 0),
@@ -49,7 +52,9 @@ function ClassDashboard() {
 
       } catch (error) {
         console.error("Fetch classes error:", error);
-        // Optional: don't alert on simple load errors to keep UI clean
+        // We generally don't alert on load errors to keep UI clean, but check console if it fails
+      } finally {
+        setLoading(false); // <--- Stop loading regardless of success/fail
       }
     };
 
@@ -135,7 +140,6 @@ function ClassDashboard() {
     if (!classToDelete) return;
 
     try {
-      // 🔥 FIX 2: Actually delete from Database (Backend)
       const api = axios.create({
         baseURL: "http://localhost:8000",
         withCredentials: true,
@@ -143,7 +147,7 @@ function ClassDashboard() {
 
       await api.delete(`/api/v1/class/${classToDelete.id}`);
 
-      // If successful, remove from UI
+      // Remove from UI
       setClasses(classes.filter(c => c.id !== classToDelete.id));
       setShowDeleteModal(false);
       setClassToDelete(null);
@@ -159,6 +163,19 @@ function ClassDashboard() {
     setClassToDelete(null);
   };
 
+  // --- RENDER LOADING ---
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="text-slate-500 font-medium">Loading classes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER DASHBOARD ---
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -279,7 +296,8 @@ function ClassDashboard() {
           ))}
         </div>
 
-        {classes.length === 0 && (
+        {/* Empty State */}
+        {!loading && classes.length === 0 && (
           <div className="text-center py-16">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 max-w-md mx-auto">
               <Users size={48} className="mx-auto text-slate-300 mb-4" />
