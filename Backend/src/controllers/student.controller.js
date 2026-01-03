@@ -37,12 +37,18 @@ const registerStudent = async (req, res) => {
     const form = new FormData();
     form.append("image", fs.createReadStream(studentPhotoLocalPath));
 
-    // Calling Python on Port 5001 (Correct!)
+   // Calling Python on Port 5001 (Correct!)
     const aiRes = await axios.post(
       "http://127.0.0.1:5001/get_embedding", 
       form,
       { headers: form.getHeaders() }
     );
+
+    // const aiRes = await axios.post(
+    //   "https://attendaidl.vercel.app/get_embedding", 
+    //   form,
+    //   { headers: form.getHeaders() }
+    // );
 
     if (!aiRes.data.success) {
       // ⚠️ CLEANUP: Delete file if face not detected

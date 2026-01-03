@@ -35,10 +35,14 @@ export const markAttendance = async (req, res) => {
         form.append('image', fs.createReadStream(groupPhotoLocalPath)); 
         form.append('students_data', JSON.stringify(studentsData));
 
-        // Use port 5001 (or 5000 depending on your Python setup)
+        //Use port 5001 (or 5000 depending on your Python setup)
         const aiRes = await axios.post('http://127.0.0.1:5001/check_attendance', form, {
             headers: { ...form.getHeaders() }
         });
+
+      //   const aiRes = await axios.post('https://attendaidl.vercel.app/check_attendance', form, {
+      //     headers: { ...form.getHeaders() }
+      // });
 
         const presentRolls = aiRes.data.present_roll_nos; // e.g., ["207", "230"]
 
