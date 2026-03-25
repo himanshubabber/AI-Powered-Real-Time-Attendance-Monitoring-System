@@ -22,7 +22,7 @@ import ClassDashboard from './Pages/Teacher/ClassDashboard.jsx';
 import ClassDetailPage from './Pages/Teacher/ClassDetailPage.jsx';
 import MarkAttendancePage from './Pages/Teacher/MarkAttendancePage.jsx';
 import AttendanceDetailPage from './Pages/Teacher/AttendanceDetailPage.jsx';
-import StudentDashboard from './pages/Student/StudentDashboard.jsx';
+import StudentDashboard from './Pages/Student/StudentDashboard.jsx';
 import StudentClassDetail from './Pages/Student/StudentClassDetail.jsx';
 const router = createBrowserRouter(
   createRoutesFromElements(
