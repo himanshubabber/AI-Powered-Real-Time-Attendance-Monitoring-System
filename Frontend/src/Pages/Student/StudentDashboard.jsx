@@ -29,7 +29,7 @@ export default function StudentDashboard() {
     const fetchEnrolledClasses = async () => {
       try {
         const api = axios.create({
-          baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/teacher/register",
+          baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app",
           withCredentials: true,
           headers: {
             Authorization: `Bearer ${accessToken}`

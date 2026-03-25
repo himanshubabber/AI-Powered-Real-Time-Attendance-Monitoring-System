@@ -81,7 +81,7 @@ export default function TeacherRegister() {
 
 
     await axios.post(
-      "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/teacher/register",
+      "https://ai-powered-real-time-attendence-mon.vercel.app",
       data,
       {
         headers: {
