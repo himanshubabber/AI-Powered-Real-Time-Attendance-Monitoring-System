@@ -38,8 +38,10 @@ export default function TeacherLogin() {
   
       // 1. Cleaned baseURL (Removed trailing slash)
       const api = axios.create({
-        baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app", 
+        baseURL: "http://localhost:8000", 
         withCredentials: true,
+        
+        // https://ai-powered-real-time-attendence-mon.vercel.app
       });
   
       const response = await api.post(

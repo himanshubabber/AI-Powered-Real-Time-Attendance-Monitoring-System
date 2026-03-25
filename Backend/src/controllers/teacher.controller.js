@@ -71,6 +71,9 @@ const loginteacher = async (req, res) => {
   if (!password) {
     throw new ApiError(400, "Password is required");
   }
+  console.log(`${email}`)
+
+  
 
   const teacher = await Teacher.findOne({ email });
 
@@ -78,14 +81,20 @@ const loginteacher = async (req, res) => {
     throw new ApiError(404, "teacher does not exist");
   }
 
+  
+
   const isPasswordCorrect = await teacher.isPasswordCorrect(password);
   if (!isPasswordCorrect) {
     throw new ApiError(400, "Incorrect password");
   }
 
+
+
   const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
     teacher._id
   );
+
+  console.log(`${accessToken}`)
 
   const loggedInTeacher = await Teacher.findById(teacher._id).select(
     "-password -refreshToken"
