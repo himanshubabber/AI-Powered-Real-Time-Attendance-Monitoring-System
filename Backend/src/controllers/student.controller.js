@@ -24,66 +24,104 @@ const generateAccessAndRefreshTokens = async (studentId) => {
 };
 
 const registerStudent = async (req, res) => {
-  const studentPhotoLocalPath = req.file?.path; // Define outside try block for cleanup access
+  // 1. Get the local path from Multer
+  const studentPhotoLocalPath = req.file?.path;
 
   try {
     const { name, rollNo, email, password, phoneNo } = req.body;
 
-    if (!studentPhotoLocalPath) {
-      return res.status(400).json({ message: "Photo is required" });
+    // Validation
+    if (!name || !rollNo || !email || !password) {
+       throw new ApiError(400, "All fields are required");
     }
 
-    // ✅ 1. CALL PYTHON FIRST
-    const form = new FormData();
-    form.append("image", fs.createReadStream(studentPhotoLocalPath));
+    if (!studentPhotoLocalPath) {
+      throw new ApiError(400, "Student photo is required");
+    }
 
-   // Calling Python on Port 5001 (Correct!)
+    // ✅ STEP 1: PREPARE DATA FOR HUGGING FACE AI
+    // We convert the file to a Buffer to ensure compatibility with Vercel/HF
+    const form = new FormData();
+    const fileBuffer = fs.readFileSync(studentPhotoLocalPath);
+    
+    // CRITICAL: Many Python APIs expect the key 'image' or 'file'. 
+    // We also provide a filename and content-type so the AI server can parse it.
+    form.append("image", fileBuffer, {
+      filename: 'student_face.jpg',
+      contentType: 'image/jpeg',
+    });
+
+    console.log("Sending request to Hugging Face AI...");
+
+    // ✅ STEP 2: CALL HUGGING FACE API
     const aiRes = await axios.post(
       "https://him123456789-attendance-api.hf.space/get_embedding", 
       form,
-      { headers: form.getHeaders() }
+      { 
+        headers: {
+          ...form.getHeaders(),
+        },
+        timeout: 20000 // 20s timeout in case HF Space is "waking up"
+      }
     );
 
-    // const aiRes = await axios.post(
-    //   "https://attendaidl.vercel.app/get_embedding", 
-    //   form,
-    //   { headers: form.getHeaders() }
-    // );
-
+    // Check if AI detected a face
     if (!aiRes.data.success) {
-      // ⚠️ CLEANUP: Delete file if face not detected
       if (fs.existsSync(studentPhotoLocalPath)) fs.unlinkSync(studentPhotoLocalPath);
-      throw new Error("Face not detected in image");
+      return res.status(422).json({ 
+        success: false, 
+        message: "Face not detected in the image. Please try another photo." 
+      });
     }
 
-    // ✅ 2. THEN UPLOAD TO CLOUDINARY
+    // ✅ STEP 3: UPLOAD TO CLOUDINARY
     const studentPhoto = await uploadOnCloudinary(studentPhotoLocalPath);
 
-    // ✅ 3. CREATE STUDENT
+    if (!studentPhoto) {
+       throw new ApiError(500, "Failed to upload image to Cloudinary");
+    }
+
+    // ✅ STEP 4: CREATE STUDENT IN MONGODB
     const student = await Student.create({
       name,
       rollNo,
       email,
       phoneNo,
-      password,
-      photo: studentPhoto?.url || "",
-      faceVector: aiRes.data.vector,
+      password, // Password will be hashed by your pre-save hook in student.model.js
+      photo: studentPhoto.url,
+      faceVector: aiRes.data.vector, // Vector received from Hugging Face
       enrolledClasses: []
     });
 
+    // Cleanup: Remove local file after successful processing
+    if (fs.existsSync(studentPhotoLocalPath)) fs.unlinkSync(studentPhotoLocalPath);
+
     return res.status(201).json({
       success: true,
-      student
+      message: "Student registered successfully",
+      student: {
+          _id: student._id,
+          name: student.name,
+          rollNo: student.rollNo,
+          email: student.email
+      }
     });
 
   } catch (error) {
-    console.error("Register error:", error);
-    // ⚠️ CLEANUP: Delete file on any error
+    console.error("Registration Error Details:", error.response?.data || error.message);
+
+    // CLEANUP: Always remove the local file if an error occurs
     if (studentPhotoLocalPath && fs.existsSync(studentPhotoLocalPath)) {
         fs.unlinkSync(studentPhotoLocalPath);
     }
-    return res.status(500).json({
-      message: error.message
+
+    // Handle Axios specific errors (like the 400 from HF)
+    const statusCode = error.response?.status || 500;
+    const errorMessage = error.response?.data?.message || error.message || "Internal Server Error";
+
+    return res.status(statusCode).json({
+      success: false,
+      message: `Registration failed: ${errorMessage}`
     });
   }
 };
