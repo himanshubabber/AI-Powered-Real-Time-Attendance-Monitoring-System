@@ -6,8 +6,7 @@ import { ApiError } from "./utils/ApiError.js";
 const app = express()
 
 app.use(cors({
-    origin: ["http://localhost:5173", "https://attendai-eight.vercel.app"], 
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: process.env.CORS_ORIGIN,
     credentials: true
 }));
 

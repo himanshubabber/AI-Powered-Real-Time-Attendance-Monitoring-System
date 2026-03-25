@@ -30,48 +30,40 @@ export default function TeacherLogin() {
   };
 
   const handleSubmit = async () => {
-  try {
-    if (!formData.email || !formData.password) {
-      alert("Please enter email and password");
-      return;
-    }
-
-    const api = axios.create({
-      baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app/",
-      withCredentials: true,
-    });
-
-    const response=await api.post(
-      "/api/v1/teacher/login",
-      {
-        email: formData.email,
-        password: formData.password,
+    try {
+      if (!formData.email || !formData.password) {
+        alert("Please enter email and password");
+        return;
       }
-    );
-
-    const loggedInTeacher = response.data.data.teacher;
-
-    dispatch(setTeacherDetails(loggedInTeacher));
-
-    alert("Login successful 🎉");
-
-    // optional: store teacher info
-    // localStorage.setItem("teacher", JSON.stringify(response.data.teacher));
-
-    // redirect to dashboard
-    navigate(`/teacher/auth/`);
-
-  } catch (error) {
-    console.error("Login error:", error);
-
-    const message =
-      error.response?.data?.message ||
-      error.response?.data?.error ||
-      "Invalid email or password";
-
-    alert(message);
-  }
-};
+  
+      // 1. Cleaned baseURL (Removed trailing slash)
+      const api = axios.create({
+        baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app", 
+        withCredentials: true,
+      });
+  
+      const response = await api.post(
+        "/api/v1/teacher/login",
+        {
+          email: formData.email,
+          password: formData.password,
+        }
+      );
+  
+      // 2. Double check if your backend returns data inside a 'data' object
+      // If your backend does res.json({ data: { teacher: ... } }) use this:
+      const loggedInTeacher = response.data.data?.teacher || response.data.teacher;
+  
+      dispatch(setTeacherDetails(loggedInTeacher));
+      alert("Login successful 🎉");
+      navigate(`/teacher/auth/`);
+  
+    } catch (error) {
+      console.error("Login error:", error);
+      const message = error.response?.data?.message || "Invalid email or password";
+      alert(message);
+    }
+  };
 
 
   return (
