@@ -100,8 +100,12 @@ const loginteacher = async (req, res) => {
     "-password -refreshToken"
   );
 
+  
+
   const accessTokenExpiry = ms(process.env.ACCESS_TOKEN_EXPIRY);
   const refreshTokenExpiry = ms(process.env.REFRESH_TOKEN_EXPIRY);
+
+  console.log(`${accessTokenExpiry}`)
 
   return res
     .cookie("refreshToken", refreshToken, {
