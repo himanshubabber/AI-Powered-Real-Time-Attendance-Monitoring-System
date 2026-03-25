@@ -31,7 +31,7 @@ export default function StudentClassDetail() {
         setLoading(true);
 
         const api = axios.create({
-          baseURL: "http://localhost:8000",
+          baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/teacher/register",
           withCredentials: true,
           headers: {
             Authorization: `Bearer ${accessToken}`,

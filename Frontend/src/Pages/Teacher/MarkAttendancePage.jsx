@@ -166,7 +166,7 @@ export default function MarkAttendancePage() {
 
       // 5. API Call
       const response = await axios.post(
-        "http://localhost:8000/api/v1/attendance/mark",
+        "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
         formData,
         {
           withCredentials: true,
