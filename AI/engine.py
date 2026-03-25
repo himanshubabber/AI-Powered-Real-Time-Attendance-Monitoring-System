@@ -1,11 +1,3 @@
-"""
-================================================================================
-   DEEP LEARNING BIOMETRIC ENGINE (INSIGHTFACE: SCRFD + ARCFACE)
-================================================================================
-   Dependencies: 
-     pip install insightface onnxruntime-gpu opencv-python numpy scikit-learn
-"""
-
 import cv2
 import numpy as np
 import io
@@ -29,96 +21,132 @@ logger = logging.getLogger("AI_Brain")
 
 # ---------------- CONFIG ----------------
 class EngineConfig:
-    # 'cuda' for NVIDIA GPU, 'coreml' for Mac M1/M2, 'cpu' for others
-    PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
     
-    # Cosine Similarity Threshold (0.0 to 1.0)
-    # Higher = Stricter match. 0.40 - 0.50 is standard for ArcFace.
-    SIMILARITY_THRESHOLD = 0.40 
+    # GPU (CUDA) or CPU
+    PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+
+    # ArcFace similarity threshold
+    SIMILARITY_THRESHOLD = 0.40
+
 
 # ---------------- ENGINE ----------------
 class FaceEngine:
 
     def __init__(self):
+
         logger.info("=" * 55)
-        logger.info(f"🚀 INITIALIZING INSIGHTFACE ENGINE")
+        logger.info("🚀 INITIALIZING INSIGHTFACE ENGINE")
         logger.info("=" * 55)
 
         try:
-            # Load SCRFD (Detection) + ArcFace (Recognition)
-            # name='buffalo_l' is the robust model pack (Detection: SCRFD, Rec: ResNet50)
-            self.app = FaceAnalysis(name="buffalo_l", providers=EngineConfig.PROVIDERS)
-            
-            # ctx_id=0 sets GPU index (use -1 for CPU)
+            # SCRFD detection + ArcFace recognition
+            self.app = FaceAnalysis(
+                name="buffalo_l",
+                providers=EngineConfig.PROVIDERS
+            )
+
+            # ctx_id = GPU index (0), use -1 for CPU
             self.app.prepare(ctx_id=0, det_size=(640, 640))
-            
-            logger.info("✅ Models Loaded: SCRFD (Detect) + ArcFace (Recognize)")
+
+            logger.info("✅ Models Loaded: SCRFD + ArcFace")
+
         except Exception as e:
-            logger.error(f"❌ Critical Error Loading AI: {e}")
+            logger.error(f"❌ AI Model Load Failed: {e}")
             raise e
 
+
     # --------------------------------------------------
+    # IMAGE PREPROCESSING
+    # --------------------------------------------------
+
     def _preprocess(self, image_bytes):
-        """
-        Decodes bytes to OpenCV BGR format (Required for InsightFace)
-        """
+
         try:
-            # 1. Decode bytes to numpy array
+
+            # convert bytes -> numpy
             nparr = np.frombuffer(image_bytes, np.uint8)
-            
-            # 2. Decode to image
+
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            # 3. Handle case where decoding fails
+
             if img is None:
-                # Fallback for some image formats
                 image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
                 img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-                
+
             return img
+
         except Exception as e:
+
             logger.error(f"Image processing failed: {e}")
             return None
 
-    # --------------------------------------------------
-    def get_single_embedding(self, image_bytes):
-        """
-        REGISTRATION MODE: Returns 512-D vector for the largest face.
-        """
-        start = time.time()
-        img = self._preprocess(image_bytes)
-        if img is None: return None
 
-        # InsightFace handles Detection + Alignment + Embedding automatically
+    # --------------------------------------------------
+    # REGISTRATION MODE
+    # --------------------------------------------------
+
+    def get_single_embedding(self, image_bytes):
+
+        start = time.time()
+
+        img = self._preprocess(image_bytes)
+
+        if img is None:
+            return None
+
         faces = self.app.get(img)
 
         if not faces:
             logger.warning("Registration failed: No face detected.")
             return None
-        
-        # Sort by size (largest face first) just in case
-        faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
-        
-        # Extract embedding (Normalised 512-D vector)
+
+        # choose largest face
+        faces = sorted(
+            faces,
+            key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
+            reverse=True
+        )
+
         embedding = faces[0].embedding.tolist()
-        
+
         duration = (time.time()-start)*1000
-        logger.info(f"⚡ Registration Vector Generated in {duration:.2f}ms")
+
+        logger.info(f"⚡ Registration Vector Generated in {duration:.2f} ms")
 
         return embedding
 
-    # --------------------------------------------------
-    def recognize_faces_in_group(self, image_bytes, known_students):
-        """
-        ATTENDANCE MODE: Detects all faces -> Matches with database
-        """
-        overall_start = time.time()
-        img = self._preprocess(image_bytes)
-        if img is None: return []
 
-        # 1. Detect & Recognize All Faces
+    # --------------------------------------------------
+    # ATTENDANCE MODE
+    # --------------------------------------------------
+
+    def recognize_faces_in_group(self, image_bytes, known_students):
+
+        overall_start = time.time()
+
+        latency = {}
+
+        # -----------------------------
+        # PREPROCESSING
+        # -----------------------------
+        t0 = time.time()
+
+        img = self._preprocess(image_bytes)
+
+        latency["preprocessing"] = (time.time()-t0)*1000
+
+        if img is None:
+            return []
+
+
+        # -----------------------------
+        # FACE DETECTION + ALIGNMENT
+        # -----------------------------
+        t0 = time.time()
+
         faces = self.app.get(img)
-        
+
+        latency["face_detection_alignment"] = (time.time()-t0)*1000
+
         if not faces:
             logger.info("No faces detected in group photo.")
             return []
@@ -128,32 +156,62 @@ class FaceEngine:
         if not known_students:
             return []
 
-        # 2. Prepare Database Matrix
+
+        # -----------------------------
+        # BATCH EMBEDDING EXTRACTION
+        # -----------------------------
+        t0 = time.time()
+
+        embeddings = []
+        for face in faces:
+            embeddings.append(face.embedding)
+
+        latency["embedding_extraction_batch"] = (time.time()-t0)*1000
+
+
+        # -----------------------------
+        # VECTOR MATCHING
+        # -----------------------------
+        t0 = time.time()
+
         known_vectors = np.array([s["vector"] for s in known_students])
         known_rolls = [s["roll"] for s in known_students]
-        
+
         present_rolls = set()
 
-        # 3. Batch Compare
-        for i, face in enumerate(faces):
-            # Reshape for sklearn (1, 512)
-            current_emb = face.embedding.reshape(1, -1)
-            
-            # Calculate Cosine Similarity against ALL students
-            similarities = cosine_similarity(current_emb, known_vectors)[0]
-            
-            # Find Best Match
-            best_idx = np.argmax(similarities)
-            best_score = similarities[best_idx]
-            
-            if best_score >= EngineConfig.SIMILARITY_THRESHOLD:
-                matched_roll = known_rolls[best_idx]
-                present_rolls.add(matched_roll)
-                logger.info(f"   Face {i+1}: MATCH {matched_roll} (Conf: {best_score*100:.1f}%)")
-            else:
-                logger.info(f"   Face {i+1}: Unknown (Conf: {best_score*100:.1f}%)")
+        for emb in embeddings:
 
-        total_time = (time.time() - overall_start) * 1000
-        logger.info(f"🏁 Processed in {total_time:.2f}ms. Found {len(present_rolls)} students.")
-        
+            current_emb = emb.reshape(1, -1)
+
+            similarities = cosine_similarity(current_emb, known_vectors)[0]
+
+            best_idx = np.argmax(similarities)
+
+            best_score = similarities[best_idx]
+
+            if best_score >= EngineConfig.SIMILARITY_THRESHOLD:
+
+                matched_roll = known_rolls[best_idx]
+
+                present_rolls.add(matched_roll)
+
+        latency["vector_matching"] = (time.time()-t0)*1000
+
+
+        # -----------------------------
+        # TOTAL TIME
+        # -----------------------------
+        latency["total"] = (time.time()-overall_start)*1000
+
+
+        # -----------------------------
+        # PRINT LATENCY
+        # -----------------------------
+        logger.info("----- LATENCY (ms) -----")
+
+        for k, v in latency.items():
+
+            logger.info(f"{k:25s}: {v:.2f}")
+
+
         return list(present_rolls)

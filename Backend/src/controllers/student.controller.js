@@ -39,7 +39,7 @@ const registerStudent = async (req, res) => {
 
    // Calling Python on Port 5001 (Correct!)
     const aiRes = await axios.post(
-      "http://127.0.0.1:5001/get_embedding", 
+      "https://him123456789-attendance-api.hf.space/get_embedding", 
       form,
       { headers: form.getHeaders() }
     );

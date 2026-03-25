@@ -1,6 +1,8 @@
-flask==3.0.0
-torch
-torchvision
-facenet-pytorch
+fastapi
+uvicorn
+python-multipart
+insightface
+onnxruntime
+opencv-python-headless
+scikit-learn
 Pillow
-numpy
