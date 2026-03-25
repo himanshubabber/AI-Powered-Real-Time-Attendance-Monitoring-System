@@ -141,7 +141,7 @@ function ClassDashboard() {
 
     try {
       const api = axios.create({
-        baseURL: "http://localhost:8000",
+        baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app",
         withCredentials: true,
       });
 
