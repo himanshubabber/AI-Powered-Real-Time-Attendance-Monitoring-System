@@ -63,80 +63,63 @@ const registerteacher = async (req, res) => {
 
 
 const loginteacher = async (req, res) => {
-  try{
+  try {
     const { email, password } = req.body;
-  if (!email) {
-    throw new ApiError(400, "Email is required");
-  }
-  if (!password) {
-    throw new ApiError(400, "Password is required");
-  }
-  console.log(`${email}`)
 
-  
-
-  const teacher = await Teacher.findOne({ email });
-
-  if (!teacher) {
-    throw new ApiError(404, "teacher does not exist");
-  }
-
-  
-
-  const isPasswordCorrect = await teacher.isPasswordCorrect(password);
-  if (!isPasswordCorrect) {
-    throw new ApiError(400, "Incorrect password");
-  }
-
-
-
-  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    teacher._id
-  );
-
-  console.log(`${accessToken}`)
-
-  const loggedInTeacher = await Teacher.findById(teacher._id).select(
-    "-password -refreshToken"
-  );
-
-  
-
-  const accessTokenExpiry = ms(process.env.ACCESS_TOKEN_EXPIRY);
-  const refreshTokenExpiry = ms(process.env.REFRESH_TOKEN_EXPIRY);
-
-  console.log(`${accessTokenExpiry}`)
-
-  return res
-    .cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      maxAge: refreshTokenExpiry,
-    })
-    .cookie("accessToken", accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      maxAge: accessTokenExpiry,
-    })
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          teacher: loggedInTeacher,
-          refreshToken,
-          accessToken,
-        },
-        "teacher logged in successfully"
-      )
-    );
-  }
-    catch(error){
-        throw new ApiError(500, "Login failed");
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
     }
+
+    const teacher = await Teacher.findOne({ email });
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher does not exist" });
+    }
+
+    const isPasswordCorrect = await teacher.isPasswordCorrect(password);
+    if (!isPasswordCorrect) {
+      return res.status(401).json({ message: "Incorrect password" });
+    }
+
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(teacher._id);
+
+    // Use a fallback if process.env is missing to prevent crashes
+    const accessTokenExpiry = ms(process.env.ACCESS_TOKEN_EXPIRY || "1d");
+    const refreshTokenExpiry = ms(process.env.REFRESH_TOKEN_EXPIRY || "10d");
+
+    const options = {
+      httpOnly: true,
+      secure: true,      // Required for HTTPS on Vercel
+      sameSite: "none",  // Lowercase is safer; must be "none" for cross-domain
+      path: "/",         // Ensures cookie is sent to all /api routes
+    };
+
+    const loggedInTeacher = await Teacher.findById(teacher._id).select("-password -refreshToken");
+
+    return res
+      .status(200)
+      .cookie("refreshToken", refreshToken, { ...options, maxAge: refreshTokenExpiry })
+      .cookie("accessToken", accessToken, { ...options, maxAge: accessTokenExpiry })
+      .json(
+        new ApiResponse(
+          200,
+          {
+            teacher: loggedInTeacher,
+            accessToken, // Sending this in JSON as a backup for the frontend
+            refreshToken,
+          },
+          "Teacher logged in successfully"
+        )
+      );
+  } catch (error) {
+    console.error("LOGIN_ERROR_DETAILS:", error); // This will show up in Vercel Logs
+    return res.status(500).json({ 
+        success: false, 
+        message: error?.message || "Internal Server Error during login" 
+    });
+  }
+
 };
+
 
 const logoutteacher = async (req, res) => {
   try{
