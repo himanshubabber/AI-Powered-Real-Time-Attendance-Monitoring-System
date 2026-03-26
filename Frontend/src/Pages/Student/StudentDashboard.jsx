@@ -68,7 +68,7 @@ export default function StudentDashboard() {
   // ================= Logout =================
   const handleLogout = async () => {
     try {
-      await axios.post("http://localhost:8000/api/v1/student/logout", {}, { 
+      await axios.post("/api/v1/student/logout", {}, { 
         withCredentials: true,
         headers: { Authorization: `Bearer ${accessToken}` }
       });
@@ -83,7 +83,7 @@ export default function StudentDashboard() {
 
     try {
       const api = axios.create({
-        baseURL: "http://localhost:8000",
+        baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app",
         withCredentials: true,
         headers: { Authorization: `Bearer ${accessToken}` }
       });
