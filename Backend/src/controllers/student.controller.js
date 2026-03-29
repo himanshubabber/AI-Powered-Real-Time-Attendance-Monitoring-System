@@ -55,7 +55,7 @@ const registerStudent = async (req, res) => {
 
     // ✅ STEP 2: CALL HUGGING FACE API
     const aiRes = await axios.post(
-      "https://him123456789-attendance-api.hf.space/get_embedding", 
+      "https://himanshubabber-attendai.hf.space/get_embedding", 
       form,
       { 
         headers: {

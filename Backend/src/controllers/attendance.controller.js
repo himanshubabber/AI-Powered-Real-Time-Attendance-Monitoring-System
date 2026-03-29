@@ -36,7 +36,7 @@ export const markAttendance = async (req, res) => {
         form.append('students_data', JSON.stringify(studentsData));
 
         //Use port 5001 (or 5000 depending on your Python setup)
-        const aiRes = await axios.post('https://him123456789-attendance-api.hf.space/check_attendance', form, {
+        const aiRes = await axios.post('https://himanshubabber-attendai.hf.space/check_attendance', form, {
             headers: { ...form.getHeaders() }
         });
 
