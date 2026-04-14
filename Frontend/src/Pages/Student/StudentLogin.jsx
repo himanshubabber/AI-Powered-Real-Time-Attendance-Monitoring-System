@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Lock, Eye, EyeOff, BookOpen } from 'lucide-react';
 import { useDispatch } from 'react-redux';
 import { setStudentDetails } from '../../store/studentAuthSlice';
+import Spinner from "../Spinner.jsx";
 
 export default function StudentLogin() {
     const navigate=useNavigate();
@@ -14,6 +15,7 @@ export default function StudentLogin() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleBackClick = () => {
     navigate("/student/")
@@ -38,6 +40,8 @@ export default function StudentLogin() {
         baseURL: "https://ai-powered-real-time-attendence-mon.vercel.app",
         withCredentials: true,
       });
+
+      setLoading(true);
 
       const response = await api.post(
         "/api/v1/student/login",
@@ -71,6 +75,7 @@ export default function StudentLogin() {
       navigate(`/student/auth/`);
 
     } catch (error) {
+      setLoading(false);
       console.error("Login error:", error);
 
       const message =
@@ -79,6 +84,8 @@ export default function StudentLogin() {
         "Invalid email or password";
 
       alert(message);
+    }finally{
+      setLoading(false);
     }
   };
 
@@ -189,6 +196,7 @@ export default function StudentLogin() {
           </p>
         </div>
       </div>
+      {loading && <Spinner/>}
     </div>
   );
 }

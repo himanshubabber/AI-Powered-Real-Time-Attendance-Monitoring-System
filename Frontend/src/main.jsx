@@ -24,6 +24,7 @@ import MarkAttendancePage from './Pages/Teacher/MarkAttendancePage.jsx';
 import AttendanceDetailPage from './Pages/Teacher/AttendanceDetailPage.jsx';
 import StudentDashboard from './Pages/Student/StudentDashboard.jsx';
 import StudentClassDetail from './Pages/Student/StudentClassDetail.jsx';
+
 const router = createBrowserRouter(
   createRoutesFromElements(
     <Route path="/">

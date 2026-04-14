@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, User, Mail, Lock, Phone, Hash, Image, Eye, EyeOff } from 'lucide-react';
 
+import Spinner from "../Spinner.jsx";
+
 export default function StudentRegister() {
     const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -17,6 +19,7 @@ export default function StudentRegister() {
   const [photoPreview, setPhotoPreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const fileInputRef = useRef(null);
+  const [loading, setLoading] = useState(false);
 
   const handleBackClick = () => {
     navigate("/student/");
@@ -70,6 +73,8 @@ export default function StudentRegister() {
     alert("Please fill all required fields and upload a photo");
     return;
   }
+ 
+  setLoading(true);
 
   try {
     const api =  axios.create({
@@ -99,11 +104,14 @@ export default function StudentRegister() {
     navigate("/student/login");
 
   } catch (error) {
+    setLoading(false);
     console.error("Student register error:", error);
     alert(
       error.response?.data?.message ||
       "Registration failed. Please try again."
     );
+  }finally {
+    setLoading(false);
   }
 };
 
@@ -307,6 +315,7 @@ export default function StudentRegister() {
           <button
             onClick={handleSubmit}
             type="button"
+            disabled={loading} // Disable while loading
             className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
           >
             <User size={20} />
@@ -330,6 +339,7 @@ export default function StudentRegister() {
           </p>
         </div>
       </div>
+      {loading && <Spinner/>}
     </div>
   );
 }

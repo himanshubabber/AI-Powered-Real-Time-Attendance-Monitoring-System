@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, User, Mail, Lock, Eye, EyeOff, GraduationCap } from 'lucide-react';
+import Spinner from "../Spinner.jsx";
 
 export default function TeacherRegister() {
     const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function TeacherRegister() {
 
   const [photoPreview, setPhotoPreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleBackClick = () => {
@@ -78,7 +80,8 @@ export default function TeacherRegister() {
     if (formData.photo) {
       data.append("profilePhoto", formData.photo); // ✅ must match multer field
     }
-
+    
+    setLoading(true);
 
     await axios.post(
       "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/teacher/register",
@@ -95,6 +98,7 @@ export default function TeacherRegister() {
     navigate("/teacher/login");
 
   } catch (error) {
+    setLoading(false);
     console.error("Register error:", error);
 
     const message =
@@ -103,6 +107,9 @@ export default function TeacherRegister() {
       "Registration failed";
 
     alert(message);
+  }
+  finally{
+    setLoading(false);
   }
   };
 
@@ -301,6 +308,7 @@ export default function TeacherRegister() {
           </ul>
         </div>
       </div>
+      {loading && <Spinner/>}
     </div>
   );
 }

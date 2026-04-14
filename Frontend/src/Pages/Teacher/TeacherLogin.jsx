@@ -5,6 +5,7 @@ import {useNavigate} from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 
 import { setTeacherDetails } from '../../store/teacherAuthSlice.js';
+import Spinner from "../Spinner.jsx";
 
 export default function TeacherLogin() {
     const navigate=useNavigate();
@@ -15,6 +16,7 @@ export default function TeacherLogin() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleBackClick = () => {
     navigate("/teacher/")
@@ -43,6 +45,8 @@ export default function TeacherLogin() {
         //http://localhost:8000
         // https://ai-powered-real-time-attendence-mon.vercel.app
       });
+
+      setLoading(true);
   
       const response = await api.post(
         "/api/v1/teacher/login",
@@ -61,9 +65,13 @@ export default function TeacherLogin() {
       navigate(`/teacher/auth/`);
   
     } catch (error) {
+      setLoading(false);
       console.error("Login error:", error);
       const message = error.response?.data?.message || "Invalid email or password";
       alert(message);
+    }
+    finally{
+      setLoading(false);
     }
   };
 
@@ -175,6 +183,7 @@ export default function TeacherLogin() {
           </p>
         </div>
       </div>
+      {loading && <Spinner/>}
     </div>
   );
 }
