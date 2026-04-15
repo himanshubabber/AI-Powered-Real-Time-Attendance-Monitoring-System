@@ -175,7 +175,7 @@ export default function MarkAttendancePage() {
         );
   
         if (response.data.success) {
-          alert(`Attendance Marked!`);
+          alert(`Attendance Marked! \n\n✅ Present: ${response.data.presentCount} students`);
           navigate(`/teacher/auth/class/${classId}/`);
         }
       } catch (error) {
