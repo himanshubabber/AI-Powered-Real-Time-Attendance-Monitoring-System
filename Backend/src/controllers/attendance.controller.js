@@ -10,109 +10,80 @@ import { uploadOnCloudinary } from '../utils/cloudinary.js';
 // 1. MARK ATTENDANCE (Teacher Side)
 // -----------------------------------------------------------------------------
 export const markAttendance = async (req, res) => {
-  // 1. Extract images from Multer (upload.array('groupPhoto'))
   const groupPhotos = req.files || []; 
   const { classId } = req.body;
 
   try {
-      if (!classId) {
-          return res.status(400).json({ success: false, msg: "classId is required" });
-      }
-      if (groupPhotos.length === 0) {
-          return res.status(400).json({ success: false, msg: "At least one photo is required" });
-      }
+      if (!classId) return res.status(400).json({ success: false, msg: "classId is required" });
+      if (groupPhotos.length === 0) return res.status(400).json({ success: false, msg: "No photos provided" });
 
-      // 2. Fetch Class to verify it exists
       const targetClass = await Class.findById(classId);
-      if (!targetClass) {
-          return res.status(404).json({ success: false, msg: "Class not found" });
-      }
+      if (!targetClass) return res.status(404).json({ success: false, msg: "Class not found" });
 
       const combinedPresentRolls = new Set();
       const uploadedPhotoUrls = [];
 
-      // ✅ 3. LOOP THROUGH EACH UPLOADED PHOTO
       for (const file of groupPhotos) {
           const localPath = file.path;
-
           try {
-              // Prepare form for Hugging Face
               const form = new FormData();
-              // Send the image stream
               form.append('image', fs.createReadStream(localPath)); 
-              // Send ONLY the classId string
-              form.append('classId', classId); 
+              // CRITICAL: Match this key name with your Hugging Face app.py argument
+              form.append('classId', classId.toString().strip()); 
 
-              // Call Hugging Face AI microservice
               const aiRes = await axios.post(
                   'https://himanshubabber-attendai.hf.space/check_attendance', 
                   form, 
                   {
                       headers: { ...form.getHeaders() },
                       maxContentLength: Infinity,
-                      maxBodyLength: Infinity
+                      maxBodyLength: Infinity,
+                      timeout: 60000 // 60 seconds for large class processing
                   }
               );
 
-              // Add recognized rolls to our unique Set
-              if (aiRes.data && aiRes.data.present_roll_nos) {
+              if (aiRes.data?.present_roll_nos) {
                   aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
               }
 
-              // 4. Upload original to Cloudinary for teacher record
               const cloudinaryRes = await uploadOnCloudinary(localPath);
-              if (cloudinaryRes?.url) {
-                  uploadedPhotoUrls.push(cloudinaryRes.url);
-              }
+              if (cloudinaryRes?.url) uploadedPhotoUrls.push(cloudinaryRes.url);
 
           } catch (error) {
-              console.error(`Error processing file ${file.filename}:`, error.message);
+              console.error(`AI Engine Error for ${file.filename}:`, error.response?.data || error.message);
           } finally {
-              // 5. CLEANUP: Delete local temp file
-              if (fs.existsSync(localPath)) {
-                  fs.unlinkSync(localPath);
-              }
+              if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
           }
       }
 
-      // 6. Match recognized Roll Numbers to MongoDB Student IDs
       const finalPresentRolls = Array.from(combinedPresentRolls);
-      
-      // Re-populate class to map roll numbers back to IDs for Attendance Record
       const populatedClass = await Class.findById(classId).populate('students');
+      
       const presentStudentIds = populatedClass.students
           .filter(student => finalPresentRolls.includes(student.rollNo))
           .map(student => student._id);
 
-      // 7. Create Final Attendance Document
       const newAttendance = await Attendance.create({
           classId: classId,
           presentStudents: presentStudentIds,
-          // Store first photo as evidence
           photoEvidence: uploadedPhotoUrls[0] || '' 
       });
 
-      // 8. Update Class History
       targetClass.attendanceHistory.push(newAttendance._id);
       await targetClass.save();
 
       return res.status(200).json({
           success: true,
           presentCount: presentStudentIds.length,
-          presentRolls: finalPresentRolls,
-          photosProcessed: groupPhotos.length
+          presentRolls: finalPresentRolls
       });
 
   } catch (err) {
-      console.error("Mark Attendance Logic Error:", err);
-      // Emergency cleanup for Multer files
-      groupPhotos.forEach(file => {
-          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-      });
+      console.error("Master Attendance Error:", err);
+      groupPhotos.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
       return res.status(500).json({ success: false, error: err.message });
   }
 };
-
 // -----------------------------------------------------------------------------
 // 2. GET ATTENDANCE DETAILS (Teacher Side - Single Date)
 // -----------------------------------------------------------------------------
