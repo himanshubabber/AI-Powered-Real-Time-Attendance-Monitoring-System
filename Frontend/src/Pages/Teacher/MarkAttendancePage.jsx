@@ -153,6 +153,8 @@ export default function MarkAttendancePage() {
       // setIsLoading(true); // You can add a state for this if you want
 
       // 3. Convert Image to File/Blob
+
+      setLoading(true);
       let imageFile;
       if (capturedImage) {
         imageFile = dataURLtoBlob(capturedImage);
@@ -167,7 +169,7 @@ export default function MarkAttendancePage() {
       formData.append("groupPhoto", imageFile, "attendance.jpg"); 
 
       // 5. API Call
-      setLoading(true);
+     
       const response = await axios.post(
         "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
         formData,
