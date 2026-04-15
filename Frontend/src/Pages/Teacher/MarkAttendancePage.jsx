@@ -81,7 +81,7 @@ export default function MarkAttendancePage() {
       canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
       
       const imageData = canvas.toDataURL('image/jpeg', 1.0);
-      setImages(prev => [...prev, { id: Date.now(), src: imageData, type: 'Camera Photo' }]);
+      setImages(prev => [...prev, { id: Date.now(), src: imageData, type: 'Camera' }]);
       stopCamera();
       setSelectedMethod(null);
     }
@@ -92,7 +92,7 @@ export default function MarkAttendancePage() {
     files.forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImages(prev => [...prev, { id: Date.now() + Math.random(), src: reader.result, type: 'Uploaded Image' }]);
+        setImages(prev => [...prev, { id: Date.now() + Math.random(), src: reader.result, type: 'Upload' }]);
       };
       reader.readAsDataURL(file);
     });
@@ -114,7 +114,7 @@ export default function MarkAttendancePage() {
         const formData = new FormData();
         formData.append("classId", classId);
         
-        // Appending all images to the same key "groupPhoto"
+        // Appending all images to the same key for backend array support
         images.forEach((img, index) => {
           const blob = dataURLtoBlob(img.src);
           formData.append("groupPhoto", blob, `attendance_${index}.jpg`);
@@ -143,6 +143,7 @@ export default function MarkAttendancePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <button onClick={handleBackClick} className="flex items-center gap-2 text-white hover:text-blue-100 mb-4 transition-colors">
@@ -157,7 +158,7 @@ export default function MarkAttendancePage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
           
-          {/* Method Selection - Only show if no images are currently staged and not in camera mode */}
+          {/* Main Action Selection */}
           {!selectedMethod && images.length === 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <button onClick={startCamera} className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-2xl p-8 transition-all hover:scale-105">
@@ -183,14 +184,19 @@ export default function MarkAttendancePage() {
             </div>
           )}
 
-          {/* Multi-Image Preview Gallery */}
+          {/* Multi-Image Review Gallery */}
           {images.length > 0 && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-900">Review Photos ({images.length})</h2>
+                <h2 className="text-2xl font-bold text-slate-900">Review Images ({images.length})</h2>
                 <div className="flex gap-2">
-                   <button onClick={startCamera} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Camera size={20}/></button>
-                   <button onClick={() => fileInputRef.current.click()} className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100"><Plus size={20}/></button>
+                   {/* Options to add more images */}
+                   <button onClick={startCamera} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all flex items-center gap-1">
+                     <Plus size={20}/><Camera size={20}/>
+                   </button>
+                   <button onClick={() => fileInputRef.current.click()} className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-1">
+                     <Plus size={20}/><Upload size={20}/>
+                   </button>
                 </div>
               </div>
 
@@ -206,8 +212,8 @@ export default function MarkAttendancePage() {
                 ))}
               </div>
 
-              <div className="flex gap-4 pt-4">
-                <button onClick={handleSubmit} className="flex-1 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold shadow-lg transition-transform active:scale-95">
+              <div className="flex gap-4 pt-4 border-t">
+                <button onClick={handleSubmit} className="flex-1 px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg transition-all active:scale-95">
                   Submit {images.length} Photos
                 </button>
               </div>
