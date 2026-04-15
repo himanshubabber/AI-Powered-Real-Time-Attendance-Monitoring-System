@@ -2,7 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, Upload, X, Image } from 'lucide-react';
-import axios from 'axios'; // 👈 ADD THIS LINE
+import axios from 'axios'; 
+import Spinner from "../Spinner.jsx";
 
 
 // Helper: Convert Base64 Image to Blob for uploading
@@ -25,6 +26,7 @@ export default function MarkAttendancePage() {
   const [capturedImage, setCapturedImage] = useState(null);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [loading, setLoading] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -165,6 +167,7 @@ export default function MarkAttendancePage() {
       formData.append("groupPhoto", imageFile, "attendance.jpg"); 
 
       // 5. API Call
+      setLoading(true);
       const response = await axios.post(
         "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
         formData,
@@ -183,10 +186,14 @@ export default function MarkAttendancePage() {
       }
 
     } catch (error) {
+      setLoading(false);
       console.error("Mark attendance error:", error);
       const msg = error.response?.data?.error || error.response?.data?.message || "Failed to mark attendance";
       alert(`Error: ${msg}`);
     } 
+    finally{
+      setLoading(false);
+    }
   };
 
   
@@ -411,6 +418,7 @@ export default function MarkAttendancePage() {
           </p>
         </div>
       </div>
+      {loading && <Spinner/>}
     </div>
   );
 }
