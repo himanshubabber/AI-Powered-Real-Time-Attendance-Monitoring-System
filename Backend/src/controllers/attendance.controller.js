@@ -10,75 +10,84 @@ import { uploadOnCloudinary } from '../utils/cloudinary.js';
 // 1. MARK ATTENDANCE (Teacher Side)
 // -----------------------------------------------------------------------------
 export const markAttendance = async (req, res) => {
-    // 1. Get the local file path immediately
-    const groupPhotoLocalPath = req.file?.path;
+  // 1. Get ALL local file paths from req.files
+  const groupPhotos = req.files || []; 
+  const { classId } = req.body;
 
-    try {
-        const { classId } = req.body;
+  try {
+      if (groupPhotos.length === 0) {
+          return res.status(400).json({ msg: "At least one photo is required" });
+      }
 
-        if (!groupPhotoLocalPath) {
-            return res.status(400).json({ msg: "Photo is required" });
-        }
+      // 2. Find the Class to get Student Data
+      const targetClass = await Class.findById(classId).populate('students');
+      if (!targetClass) return res.status(404).json({ msg: "Class not found" });
 
-        // 2. Find the Class to get Student Data
-        const targetClass = await Class.findById(classId).populate('students');
-        if (!targetClass) return res.status(404).json({ msg: "Class not found" });
+      const studentsData = targetClass.students.map(s => ({
+          roll: s.rollNo,
+          vector: s.faceVector
+      }));
 
-        const studentsData = targetClass.students.map(s => ({
-            roll: s.rollNo,
-            vector: s.faceVector
-        }));
+      // Use a Set to store unique present roll numbers across ALL photos
+      const combinedPresentRolls = new Set();
+      const uploadedPhotoUrls = [];
 
-        // ✅ 3. CALL PYTHON AI FIRST (While the local file still exists)
-        const form = new FormData();
-        // Use groupPhotoLocalPath (the string path), NOT groupPhoto.path
-        form.append('image', fs.createReadStream(groupPhotoLocalPath)); 
-        form.append('students_data', JSON.stringify(studentsData));
+      // ✅ 3. LOOP THROUGH EACH UPLOADED PHOTO
+      for (const file of groupPhotos) {
+          const localPath = file.path;
 
-        //Use port 5001 (or 5000 depending on your Python setup)
-        const aiRes = await axios.post('https://himanshubabber-attendai.hf.space/check_attendance', form, {
-            headers: { ...form.getHeaders() }
-        });
+          // Call Python AI for this specific image
+          const form = new FormData();
+          form.append('image', fs.createReadStream(localPath)); 
+          form.append('students_data', JSON.stringify(studentsData));
 
-      //   const aiRes = await axios.post('https://attendaidl.vercel.app/check_attendance', form, {
-      //     headers: { ...form.getHeaders() }
-      // });
+          const aiRes = await axios.post('https://himanshubabber-attendai.hf.space/check_attendance', form, {
+              headers: { ...form.getHeaders() }
+          });
 
-        const presentRolls = aiRes.data.present_roll_nos; // e.g., ["207", "230"]
+          // Add results from this photo to our combined set
+          if (aiRes.data.present_roll_nos) {
+              aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
+          }
 
-        // ✅ 4. NOW UPLOAD TO CLOUDINARY
-        const groupPhoto = await uploadOnCloudinary(groupPhotoLocalPath);
+          // ✅ 4. UPLOAD TO CLOUDINARY & CLEANUP
+          const cloudinaryRes = await uploadOnCloudinary(localPath);
+          if (cloudinaryRes?.url) uploadedPhotoUrls.push(cloudinaryRes.url);
+      }
 
-        // 5. Match Rolls to IDs
-        const presentStudentIds = targetClass.students
-            .filter(s => presentRolls.includes(s.rollNo))
-            .map(s => s._id);
+      const finalPresentRolls = Array.from(combinedPresentRolls);
 
-        // 6. Create Attendance Record
-        const newAttendance = await Attendance.create({
-            classId: classId,
-            presentStudents: presentStudentIds,
-            photoEvidence: groupPhoto?.url || ''
-        });
+      // 5. Match Rolls to Database IDs
+      const presentStudentIds = targetClass.students
+          .filter(s => finalPresentRolls.includes(s.rollNo))
+          .map(s => s._id);
 
-        // 7. Update Class History
-        targetClass.attendanceHistory.push(newAttendance._id);
-        await targetClass.save();
+      // 6. Create Attendance Record (Stores primary photo evidence)
+      const newAttendance = await Attendance.create({
+          classId: classId,
+          presentStudents: presentStudentIds,
+          // Storing the first photo as primary, or you can update your model to store an array
+          photoEvidence: uploadedPhotoUrls[0] || '' 
+      });
 
-        res.json({
-            success: true,
-            presentCount: presentRolls.length,
-            presentRolls: presentRolls
-        });
+      // 7. Update Class History
+      targetClass.attendanceHistory.push(newAttendance._id);
+      await targetClass.save();
 
-    } catch (err) {
-        console.error("Mark Attendance Error:", err);
-        // Cleanup: If the file is still there and an error occurred, delete it
-        if (groupPhotoLocalPath && fs.existsSync(groupPhotoLocalPath)) {
-            fs.unlinkSync(groupPhotoLocalPath);
-        }
-        res.status(500).json({ error: err.message });
-    }
+      res.json({
+          success: true,
+          presentCount: presentStudentIds.length,
+          presentRolls: finalPresentRolls
+      });
+
+  } catch (err) {
+      console.error("Mark Attendance Error:", err);
+      // Cleanup local files on error
+      groupPhotos.forEach(file => {
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+      });
+      res.status(500).json({ error: err.message });
+  }
 };
 
 // -----------------------------------------------------------------------------
