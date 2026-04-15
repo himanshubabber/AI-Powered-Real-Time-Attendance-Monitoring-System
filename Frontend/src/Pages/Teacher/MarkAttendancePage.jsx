@@ -4,7 +4,6 @@ import { ArrowLeft, Camera, Upload, X, Image as ImageIcon, Plus } from 'lucide-r
 import axios from 'axios'; 
 import Spinner from "../Spinner.jsx";
 
-// Helper: Convert Base64 Image to Blob for uploading
 const dataURLtoBlob = (dataurl) => {
   const arr = dataurl.split(',');
   const mime = arr[0].match(/:(.*?);/)[1];
@@ -21,7 +20,7 @@ export default function MarkAttendancePage() {
   const navigate = useNavigate();
   const { classId } = useParams();
   
-  // State for multiple images
+  // Changed to an array to store multiple images
   const [images, setImages] = useState([]); 
   const [selectedMethod, setSelectedMethod] = useState(null); 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -47,11 +46,7 @@ export default function MarkAttendancePage() {
     setSelectedMethod('camera');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        } 
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } } 
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -104,29 +99,20 @@ export default function MarkAttendancePage() {
   };
 
   const handleSubmit = async () => {
-    if (images.length === 0) {
-      alert("Please capture or upload at least one image.");
-      return;
-    }
+    if (images.length === 0) return alert("Please add an image first.");
     setLoading(true);
     setTimeout(async () => {
       try {
         const formData = new FormData();
         formData.append("classId", classId);
-        
-        // Appending all images to the same key for backend array support
         images.forEach((img, index) => {
-          const blob = dataURLtoBlob(img.src);
-          formData.append("groupPhoto", blob, `attendance_${index}.jpg`);
+          formData.append("groupPhoto", dataURLtoBlob(img.src), `attendance_${index}.jpg`);
         });
 
         const response = await axios.post(
           "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
           formData,
-          {
-            withCredentials: true,
-            headers: { "Content-Type": "multipart/form-data" },
-          }
+          { withCredentials: true, headers: { "Content-Type": "multipart/form-data" } }
         );
 
         if (response.data.success) {
@@ -143,78 +129,67 @@ export default function MarkAttendancePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <button onClick={handleBackClick} className="flex items-center gap-2 text-white hover:text-blue-100 mb-4 transition-colors">
-            <ArrowLeft size={20} />
-            <span className="font-medium">Back to Class</span>
-          </button>
-          <h1 className="text-4xl font-bold text-white mb-2">Mark Attendance</h1>
-          <p className="text-blue-100">{classData.name} • {classData.students} Students</p>
-        </div>
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg px-4 py-6">
+        <button onClick={handleBackClick} className="flex items-center gap-2 text-white mb-4"><ArrowLeft size={20} /> Back</button>
+        <h1 className="text-4xl font-bold text-white">Mark Attendance</h1>
+        <p className="text-blue-100">{classData.name} • {classData.students} Students</p>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-xl shadow-sm border p-8">
           
-          {/* Main Action Selection */}
+          {/* Initial State */}
           {!selectedMethod && images.length === 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <button onClick={startCamera} className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-2xl p-8 transition-all hover:scale-105">
+              <button onClick={startCamera} className="border-2 border-blue-200 rounded-2xl p-8 hover:bg-blue-50 transition-all">
                 <Camera className="mx-auto text-blue-500 mb-4" size={48} />
-                <h3 className="text-xl font-bold text-slate-900 text-center">Use Camera</h3>
+                <h3 className="text-xl font-bold text-center">Use Camera</h3>
               </button>
-              <button onClick={() => fileInputRef.current.click()} className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-purple-100 border-2 border-purple-200 rounded-2xl p-8 transition-all hover:scale-105">
+              <button onClick={() => fileInputRef.current.click()} className="border-2 border-purple-200 rounded-2xl p-8 hover:bg-purple-50 transition-all">
                 <Upload className="mx-auto text-purple-500 mb-4" size={48} />
-                <h3 className="text-xl font-bold text-slate-900 text-center">Upload Image</h3>
+                <h3 className="text-xl font-bold text-center">Upload Image</h3>
               </button>
             </div>
           )}
 
           {/* Camera View */}
           {selectedMethod === 'camera' && (
-            <div className="relative bg-slate-900 rounded-lg overflow-hidden">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto min-h-[400px]" />
-              <div className="flex gap-4 p-6 bg-white border-t">
-                <button onClick={() => { stopCamera(); setSelectedMethod(null); }} className="flex-1 px-6 py-3 border-2 border-slate-300 rounded-lg">Cancel</button>
-                <button onClick={capturePhoto} disabled={!isStreaming} className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold">Capture Photo</button>
+            <div className="bg-slate-900 rounded-lg overflow-hidden">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-auto" />
+              <div className="flex gap-4 p-4 bg-white">
+                <button onClick={() => setSelectedMethod(null)} className="flex-1 py-3 border rounded-lg">Cancel</button>
+                <button onClick={capturePhoto} className="flex-1 py-3 bg-blue-600 text-white rounded-lg">Capture</button>
               </div>
-              <canvas ref={canvasRef} className="hidden" />
             </div>
           )}
 
-          {/* Multi-Image Review Gallery */}
+          {/* GALLERY PREVIEW WITH PLUS OPTIONS */}
           {images.length > 0 && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-900">Review Images ({images.length})</h2>
-                <div className="flex gap-2">
-                   {/* Options to add more images */}
-                   <button onClick={startCamera} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all flex items-center gap-1">
-                     <Plus size={20}/><Camera size={20}/>
-                   </button>
-                   <button onClick={() => fileInputRef.current.click()} className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-all flex items-center gap-1">
-                     <Plus size={20}/><Upload size={20}/>
-                   </button>
-                </div>
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Review Images ({images.length})</h2>
+                <X className="cursor-pointer text-slate-400" onClick={() => setImages([])} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {images.map((img) => (
-                  <div key={img.id} className="relative bg-slate-100 rounded-lg overflow-hidden border">
-                    <img src={img.src} alt="Attendance" className="w-full h-48 object-cover" />
-                    <div className="absolute top-2 left-2 bg-white/90 px-2 py-1 rounded text-xs font-bold shadow-sm">{img.type}</div>
-                    <button onClick={() => removeImage(img.id)} className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md">
-                      <X size={16} />
-                    </button>
+                  <div key={img.id} className="relative rounded-lg overflow-hidden border">
+                    <img src={img.src} alt="Preview" className="w-full h-40 object-cover" />
+                    <button onClick={() => removeImage(img.id)} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1"><X size={14}/></button>
                   </div>
                 ))}
               </div>
 
-              <div className="flex gap-4 pt-4 border-t">
-                <button onClick={handleSubmit} className="flex-1 px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-lg transition-all active:scale-95">
-                  Submit {images.length} Photos
+              {/* ACTION BUTTONS (Plus logic) */}
+              <div className="grid grid-cols-3 gap-4">
+                <button onClick={startCamera} className="flex flex-col items-center justify-center border-2 border-dashed border-blue-300 rounded-lg py-3 text-blue-600 hover:bg-blue-50">
+                  <Plus size={20}/> <Camera size={20}/> <span className="text-xs">Add Camera</span>
+                </button>
+                <button onClick={() => fileInputRef.current.click()} className="flex flex-col items-center justify-center border-2 border-dashed border-purple-300 rounded-lg py-3 text-purple-600 hover:bg-purple-50">
+                  <Plus size={20}/> <Upload size={20}/> <span className="text-xs">Add Upload</span>
+                </button>
+                <button onClick={handleSubmit} className="col-span-1 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-md">
+                  Submit All
                 </button>
               </div>
             </div>
