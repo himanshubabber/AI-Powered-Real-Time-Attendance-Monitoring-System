@@ -15,7 +15,7 @@ const router = Router();
 // ✅ Mark Attendance Route
 router.route("/mark").post(
     verifyJWT, 
-    upload.single("groupPhoto"), 
+upload.array('groupPhoto', 10), 
     markAttendance
 );
 
