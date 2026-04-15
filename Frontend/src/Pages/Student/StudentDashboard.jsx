@@ -5,6 +5,7 @@ import axios from "axios";
 import { useDispatch, useSelector } from "react-redux";
 import { clearStudentDetails } from '../../store/studentAuthSlice.js';
 
+
 export default function StudentDashboard() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -21,7 +22,6 @@ export default function StudentDashboard() {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [classCode, setClassCode] = useState('');
   const [loading, setLoading] = useState(true);
-
   // ================= Fetch Classes =================
   useEffect(() => {
     if (!accessToken) return;
