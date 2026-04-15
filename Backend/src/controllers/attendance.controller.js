@@ -14,74 +14,51 @@ export const markAttendance = async (req, res) => {
   const { classId } = req.body;
 
   try {
-      if (!classId) return res.status(400).json({ success: false, msg: "classId is required" });
-      if (groupPhotos.length === 0) return res.status(400).json({ success: false, msg: "No photos provided" });
-
-      const targetClass = await Class.findById(classId);
-      if (!targetClass) return res.status(404).json({ success: false, msg: "Class not found" });
-
+      if (!classId) return res.status(400).json({ success: false, msg: "classId required" });
+      
       const combinedPresentRolls = new Set();
       const uploadedPhotoUrls = [];
 
       for (const file of groupPhotos) {
-          const localPath = file.path;
-          try {
-              const form = new FormData();
-              form.append('image', fs.createReadStream(localPath)); 
-              // CRITICAL: Match this key name with your Hugging Face app.py argument
-              form.append('classId', classId.toString().strip()); 
+          const form = new FormData();
+          form.append('image', fs.createReadStream(file.path)); 
+          form.append('classId', classId.toString()); 
 
-              const aiRes = await axios.post(
-                  'https://himanshubabber-attendai.hf.space/check_attendance', 
-                  form, 
-                  {
-                      headers: { ...form.getHeaders() },
-                      maxContentLength: Infinity,
-                      maxBodyLength: Infinity,
-                      timeout: 60000 // 60 seconds for large class processing
-                  }
-              );
+          const aiRes = await axios.post(
+              'https://himanshubabber-attendai.hf.space/check_attendance', 
+              form, 
+              { headers: { ...form.getHeaders() }, timeout: 60000 }
+          );
 
-              if (aiRes.data?.present_roll_nos) {
-                  aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
-              }
-
-              const cloudinaryRes = await uploadOnCloudinary(localPath);
-              if (cloudinaryRes?.url) uploadedPhotoUrls.push(cloudinaryRes.url);
-
-          } catch (error) {
-              console.error(`AI Engine Error for ${file.filename}:`, error.response?.data || error.message);
-          } finally {
-              if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+          if (aiRes.data?.success) {
+              // 🔍 LOGGING TOTAL STUDENTS FETCHED
+              console.log(`[VERCEL LOG]: AI fetched ${aiRes.data.total_students_fetched} students. Recognized ${aiRes.data.present_roll_nos.length}.`);
+              
+              aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
           }
+
+          const cloudRes = await uploadOnCloudinary(file.path);
+          if (cloudRes?.url) uploadedPhotoUrls.push(cloudRes.url);
+          if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       }
 
-      const finalPresentRolls = Array.from(combinedPresentRolls);
       const populatedClass = await Class.findById(classId).populate('students');
-      
       const presentStudentIds = populatedClass.students
-          .filter(student => finalPresentRolls.includes(student.rollNo))
-          .map(student => student._id);
+          .filter(s => Array.from(combinedPresentRolls).includes(s.rollNo))
+          .map(s => s._id);
 
       const newAttendance = await Attendance.create({
-          classId: classId,
+          classId,
           presentStudents: presentStudentIds,
           photoEvidence: uploadedPhotoUrls[0] || '' 
       });
 
-      targetClass.attendanceHistory.push(newAttendance._id);
-      await targetClass.save();
+      await Class.findByIdAndUpdate(classId, { $push: { attendanceHistory: newAttendance._id } });
 
-      return res.status(200).json({
-          success: true,
-          presentCount: presentStudentIds.length,
-          presentRolls: finalPresentRolls
-      });
-
+      res.status(200).json({ success: true, presentCount: presentStudentIds.length });
   } catch (err) {
-      console.error("Master Attendance Error:", err);
-      groupPhotos.forEach(f => { if (fs.existsSync(f.path)) fs.unlinkSync(f.path); });
-      return res.status(500).json({ success: false, error: err.message });
+      console.error("Controller Error:", err.message);
+      res.status(500).json({ success: false, error: err.message });
   }
 };
 // -----------------------------------------------------------------------------
