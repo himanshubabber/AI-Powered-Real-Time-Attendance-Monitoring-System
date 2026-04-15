@@ -142,62 +142,50 @@ export default function MarkAttendancePage() {
   // };
 
   const handleSubmit = async () => {
-    // 1. Validation
     if (!capturedImage && !uploadedImage) {
       alert("Please capture or upload an image first.");
       return;
     }
-
-    try {
-      // 2. Show Loading State (Optional UI improvement)
-      // setIsLoading(true); // You can add a state for this if you want
-
-      // 3. Convert Image to File/Blob
-
-      setLoading(true);
-      let imageFile;
-      if (capturedImage) {
-        imageFile = dataURLtoBlob(capturedImage);
-      } else if (uploadedImage) {
-        imageFile = dataURLtoBlob(uploadedImage);
-      }
-
-      // 4. Prepare FormData
-      const formData = new FormData();
-      formData.append("classId", classId);
-      // 'groupPhoto' must match the backend upload.single("groupPhoto")
-      formData.append("groupPhoto", imageFile, "attendance.jpg"); 
-
-      // 5. API Call
-     
-      const response = await axios.post(
-        "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
-        formData,
-        {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+  
+    // 1. Set loading FIRST
+    setLoading(true);
+  
+    // 2. Wrap the rest in a tiny timeout to give React 
+    // a chance to render the Spinner before the CPU gets busy
+    setTimeout(async () => {
+      try {
+        let imageFile;
+        if (capturedImage) {
+          imageFile = dataURLtoBlob(capturedImage);
+        } else if (uploadedImage) {
+          imageFile = dataURLtoBlob(uploadedImage);
         }
-      );
-
-      // 6. Success Handling
-      if (response.data.success) {
-        alert(`Attendance Marked! \n\n✅ Present: ${response.data.presentCount} students`);
-        navigate(`/teacher/auth/class/${classId}/`);
+  
+        const formData = new FormData();
+        formData.append("classId", classId);
+        formData.append("groupPhoto", imageFile, "attendance.jpg"); 
+  
+        const response = await axios.post(
+          "https://ai-powered-real-time-attendence-mon.vercel.app/api/v1/attendance/mark",
+          formData,
+          {
+            withCredentials: true,
+            headers: { "Content-Type": "multipart/form-data" },
+          }
+        );
+  
+        if (response.data.success) {
+          alert(`Attendance Marked!`);
+          navigate(`/teacher/auth/class/${classId}/`);
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        alert("Failed to mark attendance");
+      } finally {
+        setLoading(false);
       }
-
-    } catch (error) {
-      setLoading(false);
-      console.error("Mark attendance error:", error);
-      const msg = error.response?.data?.error || error.response?.data?.message || "Failed to mark attendance";
-      alert(`Error: ${msg}`);
-    } 
-    finally{
-      setLoading(false);
-    }
+    }, 100); 
   };
-
   
   const currentImage = capturedImage || uploadedImage;
 
