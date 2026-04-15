@@ -10,25 +10,24 @@ import { uploadOnCloudinary } from '../utils/cloudinary.js';
 // 1. MARK ATTENDANCE (Teacher Side)
 // -----------------------------------------------------------------------------
 export const markAttendance = async (req, res) => {
-  // 1. Get ALL local file paths from req.files
+  // 1. Extract images from Multer (upload.array('groupPhoto'))
   const groupPhotos = req.files || []; 
   const { classId } = req.body;
 
   try {
+      if (!classId) {
+          return res.status(400).json({ success: false, msg: "classId is required" });
+      }
       if (groupPhotos.length === 0) {
-          return res.status(400).json({ msg: "At least one photo is required" });
+          return res.status(400).json({ success: false, msg: "At least one photo is required" });
       }
 
-      // 2. Find the Class to get Student Data
-      const targetClass = await Class.findById(classId).populate('students');
-      if (!targetClass) return res.status(404).json({ msg: "Class not found" });
+      // 2. Fetch Class to verify it exists
+      const targetClass = await Class.findById(classId);
+      if (!targetClass) {
+          return res.status(404).json({ success: false, msg: "Class not found" });
+      }
 
-      const studentsData = targetClass.students.map(s => ({
-          roll: s.rollNo,
-          vector: s.faceVector
-      }));
-
-      // Use a Set to store unique present roll numbers across ALL photos
       const combinedPresentRolls = new Set();
       const uploadedPhotoUrls = [];
 
@@ -36,57 +35,81 @@ export const markAttendance = async (req, res) => {
       for (const file of groupPhotos) {
           const localPath = file.path;
 
-          // Call Python AI for this specific image
-          const form = new FormData();
-          form.append('image', fs.createReadStream(localPath)); 
-          form.append('students_data', JSON.stringify(studentsData));
+          try {
+              // Prepare form for Hugging Face
+              const form = new FormData();
+              // Send the image stream
+              form.append('image', fs.createReadStream(localPath)); 
+              // Send ONLY the classId string
+              form.append('classId', classId); 
 
-          const aiRes = await axios.post('https://himanshubabber-attendai.hf.space/check_attendance', form, {
-              headers: { ...form.getHeaders() }
-          });
+              // Call Hugging Face AI microservice
+              const aiRes = await axios.post(
+                  'https://himanshubabber-attendai.hf.space/check_attendance', 
+                  form, 
+                  {
+                      headers: { ...form.getHeaders() },
+                      maxContentLength: Infinity,
+                      maxBodyLength: Infinity
+                  }
+              );
 
-          // Add results from this photo to our combined set
-          if (aiRes.data.present_roll_nos) {
-              aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
+              // Add recognized rolls to our unique Set
+              if (aiRes.data && aiRes.data.present_roll_nos) {
+                  aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
+              }
+
+              // 4. Upload original to Cloudinary for teacher record
+              const cloudinaryRes = await uploadOnCloudinary(localPath);
+              if (cloudinaryRes?.url) {
+                  uploadedPhotoUrls.push(cloudinaryRes.url);
+              }
+
+          } catch (error) {
+              console.error(`Error processing file ${file.filename}:`, error.message);
+          } finally {
+              // 5. CLEANUP: Delete local temp file
+              if (fs.existsSync(localPath)) {
+                  fs.unlinkSync(localPath);
+              }
           }
-
-          // ✅ 4. UPLOAD TO CLOUDINARY & CLEANUP
-          const cloudinaryRes = await uploadOnCloudinary(localPath);
-          if (cloudinaryRes?.url) uploadedPhotoUrls.push(cloudinaryRes.url);
       }
 
+      // 6. Match recognized Roll Numbers to MongoDB Student IDs
       const finalPresentRolls = Array.from(combinedPresentRolls);
+      
+      // Re-populate class to map roll numbers back to IDs for Attendance Record
+      const populatedClass = await Class.findById(classId).populate('students');
+      const presentStudentIds = populatedClass.students
+          .filter(student => finalPresentRolls.includes(student.rollNo))
+          .map(student => student._id);
 
-      // 5. Match Rolls to Database IDs
-      const presentStudentIds = targetClass.students
-          .filter(s => finalPresentRolls.includes(s.rollNo))
-          .map(s => s._id);
-
-      // 6. Create Attendance Record (Stores primary photo evidence)
+      // 7. Create Final Attendance Document
       const newAttendance = await Attendance.create({
           classId: classId,
           presentStudents: presentStudentIds,
-          // Storing the first photo as primary, or you can update your model to store an array
+          // Store first photo as evidence
           photoEvidence: uploadedPhotoUrls[0] || '' 
       });
 
-      // 7. Update Class History
+      // 8. Update Class History
       targetClass.attendanceHistory.push(newAttendance._id);
       await targetClass.save();
 
-      res.json({
+      return res.status(200).json({
           success: true,
           presentCount: presentStudentIds.length,
-          presentRolls: finalPresentRolls
+          presentRolls: finalPresentRolls,
+          photosProcessed: groupPhotos.length
       });
 
   } catch (err) {
-      console.error("Mark Attendance Error:", err);
-      // Cleanup local files on error
+      console.error("Mark Attendance Logic Error:", err);
+      // Emergency cleanup for Multer files
       groupPhotos.forEach(file => {
           if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
       });
-      res.status(500).json({ error: err.message });
+      return res.status(500).json({ success: false, error: err.message });
   }
 };
 
