@@ -47,8 +47,15 @@ export const markAttendance = async (req, res) => {
 
      // 1. Get the IDs of students whose RollNo was found by the AI
      const rawPresentIds = populatedClass.students
-    .filter(s => Array.from(combinedPresentRolls).includes(s.rollNo))
-    .map(s => s._id.toString()); // Convert to string for Set comparison
+    .filter(s => {
+        // 1. Ensure student object and rollNo exist
+        if (!s || !s.rollNo) return false;
+        
+        // 2. Clean the rollNo (trim spaces) and check against our unique Set
+        const cleanRoll = s.rollNo.toString().trim();
+        return Array.from(combinedPresentRolls).includes(cleanRoll);
+    })
+    .map(s => s._id.toString());
 
     // 2. FORCE UNIQUENESS on the IDs
     const uniquePresentIds = [...new Set(rawPresentIds)];
