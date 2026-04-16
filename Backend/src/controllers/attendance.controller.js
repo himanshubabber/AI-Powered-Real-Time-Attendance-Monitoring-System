@@ -43,19 +43,31 @@ export const markAttendance = async (req, res) => {
       }
 
       const populatedClass = await Class.findById(classId).populate('students');
-      const presentStudentIds = populatedClass.students
-          .filter(s => Array.from(combinedPresentRolls).includes(s.rollNo))
-          .map(s => s._id);
 
-      const newAttendance = await Attendance.create({
-          classId,
-          presentStudents: presentStudentIds,
-          photoEvidence: uploadedPhotoUrls[0] || '' 
-      });
+     // 1. Get the IDs of students whose RollNo was found by the AI
+     const rawPresentIds = populatedClass.students
+    .filter(s => Array.from(combinedPresentRolls).includes(s.rollNo))
+    .map(s => s._id.toString()); // Convert to string for Set comparison
 
-      await Class.findByIdAndUpdate(classId, { $push: { attendanceHistory: newAttendance._id } });
+    // 2. FORCE UNIQUENESS on the IDs
+    const uniquePresentIds = [...new Set(rawPresentIds)];
 
-      res.status(200).json({ success: true, presentCount: presentStudentIds.length });
+    // 3. Save the unique list
+    const newAttendance = await Attendance.create({
+    classId,
+    presentStudents: uniquePresentIds, 
+    presentCount: uniquePresentIds.length, // Add this explicit field for faster front-end loading
+    photoEvidence: uploadedPhotoUrls[0] || '' 
+    });
+
+    await Class.findByIdAndUpdate(classId, { $push: { attendanceHistory: newAttendance._id } });
+
+    // 4. Return the length of the unique list
+    res.status(200).json({ 
+    success: true, 
+    presentCount: uniquePresentIds.length,
+    presentRolls: Array.from(combinedPresentRolls) // Helpful for debugging
+    });
   } catch (err) {
       console.error("Controller Error:", err.message);
       res.status(500).json({ success: false, error: err.message });

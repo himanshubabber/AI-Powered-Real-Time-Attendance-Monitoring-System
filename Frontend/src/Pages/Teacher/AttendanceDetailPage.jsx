@@ -11,14 +11,13 @@ export default function AttendanceDetail() {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('All'); 
 
-  // Format Date for Header and CSV (e.g., "30/12/2025")
+  // --- 1. DATE FORMATTING ---
   const formattedDateHeader = new Date(date).toLocaleDateString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
-  
-  // Simpler date format for CSV rows
   const csvDate = new Date(date).toLocaleDateString('en-GB'); 
 
+  // --- 2. DATA FETCHING ---
   useEffect(() => {
     const fetchDetail = async () => {
       try {
@@ -30,18 +29,51 @@ export default function AttendanceDetail() {
         const response = await api.get(`/api/v1/attendance/class/${classId}/date/${date}`);
         setData(response.data.data);
       } catch (error) {
-        console.error("Error:", error);
+        console.error("Error fetching detail:", error);
       } finally {
         setLoading(false);
       }
     };
-
     fetchDetail();
   }, [classId, date]);
 
-  // 🔥 FRONTEND-ONLY EXPORT FUNCTION
+  // --- 3. DEDUPLICATION LOGIC (The "Source of Truth") ---
+  const getProcessedData = () => {
+    if (!data || !data.students) return { students: [], total: 0, present: 0, absent: 0, pct: 0 };
+
+    // Use a Map to force uniqueness by Roll Number
+    const uniqueMap = new Map();
+    
+    data.students.forEach(student => {
+      const roll = (student.rollNo || "").toString().trim();
+      if (!roll) return;
+
+      // Priority Logic: If a student exists twice, 'Present' overwrites 'Absent'
+      if (!uniqueMap.has(roll) || student.status === 'Present') {
+        uniqueMap.set(roll, student);
+      }
+    });
+
+    const uniqueList = Array.from(uniqueMap.values());
+    const total = uniqueList.length;
+    const present = uniqueList.filter(s => s.status === 'Present').length;
+    const absent = Math.max(0, total - present);
+    const pct = total > 0 ? ((present / total) * 100).toFixed(1) : "0.0";
+
+    return { 
+      students: uniqueList, 
+      total, 
+      present, 
+      absent, 
+      pct 
+    };
+  };
+
+  const { students: uniqueStudents, total, present, absent, pct } = getProcessedData();
+
+  // --- 4. EXPORT LOGIC ---
   const handleExport = () => {
-    if (!data || !data.students) {
+    if (uniqueStudents.length === 0) {
       alert("No data to export");
       return;
     }
@@ -49,45 +81,36 @@ export default function AttendanceDetail() {
     const confirmDownload = window.confirm(`Download attendance report for ${csvDate}?`);
     if (!confirmDownload) return;
 
-    // 1. Create CSV Headers
     const headers = ["Roll No,Student Name,Date,Status"];
-
-    // 2. Generate Rows from the existing 'data' state
-    const rows = data.students.map(student => {
-      // Escape name in quotes just in case it has commas
+    const rows = uniqueStudents.map(student => {
       return `${student.rollNo},"${student.name}",${csvDate},${student.status}`;
     });
 
-    // 3. Combine Header and Rows with newlines
     const csvContent = [headers, ...rows].join("\n");
-
-    // 4. Create a Blob (File) from the string
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
 
-    // 5. Trigger Download
     const link = document.createElement("a");
     link.href = url;
     link.setAttribute("download", `Attendance_${date}.csv`);
     document.body.appendChild(link);
     link.click();
-
-    // 6. Cleanup
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
 
-  const filteredStudents = data?.students.filter(student => {
+  // --- 5. FILTERING LOGIC ---
+  const filteredStudents = uniqueStudents.filter(student => {
     if (filter === 'All') return true;
     return student.status === filter;
-  }) || [];
+  });
 
-  if (loading) return <div className="p-10 text-center">Loading...</div>;
-  if (!data) return <div className="p-10 text-center">Record not found</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (!data) return <div className="min-h-screen flex items-center justify-center">Record not found</div>;
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* --- HEADER --- */}
+      {/* --- STICKY HEADER --- */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -98,8 +121,6 @@ export default function AttendanceDetail() {
               <ArrowLeft size={20} className="mr-2" />
               Back
             </button>
-            
-            {/* EXPORT BUTTON */}
             <button 
               onClick={handleExport}
               className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 font-medium transition-all"
@@ -108,23 +129,21 @@ export default function AttendanceDetail() {
               Export CSV
             </button>
           </div>
-          
           <h1 className="text-2xl font-bold text-slate-900">{formattedDateHeader}</h1>
-          <p className="text-slate-500">Attendance Detail View</p>
+          <p className="text-slate-500">Class Attendance Report</p>
         </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
-        
-        {/* STATS CARDS */}
+        {/* --- STATS CARDS --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Total Students" value={data.totalStudents} color="bg-blue-50 text-blue-700" />
-          <StatCard label="Present" value={data.presentCount} color="bg-green-50 text-green-700" />
-          <StatCard label="Absent" value={data.absentCount} color="bg-red-50 text-red-700" />
-          <StatCard label="Attendance %" value={`${data.attendancePercentage}%`} color="bg-purple-50 text-purple-700" />
+          <StatCard label="Total Students" value={total} color="bg-blue-50 text-blue-700" />
+          <StatCard label="Present" value={present} color="bg-green-50 text-green-700" />
+          <StatCard label="Absent" value={absent} color="bg-red-50 text-red-700" />
+          <StatCard label="Attendance %" value={`${pct}%`} color="bg-purple-50 text-purple-700" />
         </div>
 
-        {/* FILTERS & LIST */}
+        {/* --- FILTER TABS --- */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="flex border-b border-slate-200">
             {['All', 'Present', 'Absent'].map((f) => (
@@ -135,22 +154,24 @@ export default function AttendanceDetail() {
                   filter === f ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                {f}
+                {f} ({f === 'All' ? total : f === 'Present' ? present : absent})
               </button>
             ))}
           </div>
 
+          {/* --- TABLE HEADER --- */}
           <div className="grid grid-cols-12 gap-4 p-4 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            <div className="col-span-3">Roll No</div>
-            <div className="col-span-6">Name</div>
-            <div className="col-span-3 text-right">Status</div>
+            <div className="col-span-3 font-bold">Roll No</div>
+            <div className="col-span-6 font-bold">Student Name</div>
+            <div className="col-span-3 text-right font-bold">Status</div>
           </div>
 
+          {/* --- STUDENT LIST --- */}
           <div className="divide-y divide-slate-100">
             {filteredStudents.length > 0 ? (
               filteredStudents.map((student) => (
-                <div key={student._id} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
-                  <div className="col-span-3 font-mono text-sm text-slate-600">{student.rollNo || "N/A"}</div>
+                <div key={student.rollNo} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-slate-50 transition-colors">
+                  <div className="col-span-3 font-mono text-sm text-slate-600">{student.rollNo}</div>
                   <div className="col-span-6 font-medium text-slate-900">{student.name}</div>
                   <div className="col-span-3 flex justify-end">
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
@@ -163,7 +184,9 @@ export default function AttendanceDetail() {
                 </div>
               ))
             ) : (
-              <div className="p-8 text-center text-slate-500">No students found for this filter.</div>
+              <div className="p-12 text-center text-slate-500 italic">
+                No records found for this category.
+              </div>
             )}
           </div>
         </div>
@@ -172,11 +195,12 @@ export default function AttendanceDetail() {
   );
 }
 
+// Helper Component for Stats
 function StatCard({ label, value, color }) {
   return (
-    <div className={`p-4 rounded-xl ${color}`}>
-      <p className="text-xs font-semibold uppercase opacity-80 mb-1">{label}</p>
-      <p className="text-2xl font-bold">{value}</p>
+    <div className={`p-5 rounded-2xl shadow-sm border border-black/5 ${color}`}>
+      <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-2">{label}</p>
+      <p className="text-3xl font-extrabold">{value}</p>
     </div>
   );
 }

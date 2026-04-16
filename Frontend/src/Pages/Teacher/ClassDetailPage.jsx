@@ -22,36 +22,46 @@ export default function ClassDetailPage() {
         const response = await api.get(`/api/v1/class/${classId}`);
         const cls = response.data.class;
 
-        // 🔥 LOGIC FIX: Check if 'students' array exists to get the REAL count
-        const uniqueStudents = (cls.students && Array.isArray(cls.students)) 
-        ? [...new Set(cls.students.map(s => s._id || s))] 
-        : [];
-      
-      const realStudentCount = uniqueStudents.length > 0 
-        ? uniqueStudents.length 
-        : (cls.noOfStudents || 0);
-      
-      setClassData({
-        id: cls._id,
-        name: cls.className,
-        subject: cls.subject,
-        students: realStudentCount, 
-        schedule: cls.schedule || [],
-      });
-        // 2️⃣ Set Attendance History
-        const records = (cls.attendanceHistory || []).map((att) => ({
-          date: att.date,
-          present: att.presentCount,
-          absent: att.absentCount,
-          percentage: att.attendancePercentage,
-        }));
+        // 1️⃣ GLOBAL SOURCE OF TRUTH: Get unique students from the enrollment list
+        const uniqueStudentIds = (cls.students && Array.isArray(cls.students)) 
+          ? [...new Set(cls.students.map(s => (s._id || s).toString()))] 
+          : [];
+        
+        const realTotal = uniqueStudentIds.length > 0 
+          ? uniqueStudentIds.length 
+          : (cls.noOfStudents || 0);
+
+        // 2️⃣ Set Top Cards with the Real Total
+        setClassData({
+          id: cls._id,
+          name: cls.className,
+          subject: cls.subject,
+          students: realTotal, 
+          schedule: cls.schedule || [],
+        });
+
+        // 3️⃣ Set Attendance History (Recalculated based on realTotal)
+        const records = (cls.attendanceHistory || []).map((att) => {
+          const present = att.presentCount || 0;
+          
+          // Force consistency: Absent cannot be negative, and Percentage must relate to realTotal
+          const absent = Math.max(0, realTotal - present);
+          const percentage = realTotal > 0 
+            ? parseFloat(((present / realTotal) * 100).toFixed(1)) 
+            : 0;
+
+          return {
+            date: att.date,
+            present: present,
+            absent: absent,
+            percentage: percentage,
+          };
+        });
 
         setAttendanceRecords(records);
 
       } catch (error) {
         console.error("Fetch class detail error:", error);
-        // Optional: Redirect back if class not found
-        // navigate("/teacher/auth/");
       } finally {
         setLoading(false);
       }
