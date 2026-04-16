@@ -23,19 +23,21 @@ export default function ClassDetailPage() {
         const cls = response.data.class;
 
         // 🔥 LOGIC FIX: Check if 'students' array exists to get the REAL count
-        const realStudentCount = (cls.students && Array.isArray(cls.students)) 
-          ? cls.students.length 
-          : (cls.noOfStudents || 0);
-
-        // 1️⃣ Set Class Data
-        setClassData({
-          id: cls._id,
-          name: cls.className,
-          subject: cls.subject,
-          students: realStudentCount, // Use the calculated real count
-          schedule: cls.schedule || [],
-        });
-
+        const uniqueStudents = (cls.students && Array.isArray(cls.students)) 
+        ? [...new Set(cls.students.map(s => s._id || s))] 
+        : [];
+      
+      const realStudentCount = uniqueStudents.length > 0 
+        ? uniqueStudents.length 
+        : (cls.noOfStudents || 0);
+      
+      setClassData({
+        id: cls._id,
+        name: cls.className,
+        subject: cls.subject,
+        students: realStudentCount, 
+        schedule: cls.schedule || [],
+      });
         // 2️⃣ Set Attendance History
         const records = (cls.attendanceHistory || []).map((att) => ({
           date: att.date,
