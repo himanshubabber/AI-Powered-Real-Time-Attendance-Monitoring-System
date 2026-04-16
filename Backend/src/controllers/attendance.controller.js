@@ -35,6 +35,7 @@ export const markAttendance = async (req, res) => {
               console.log(`[VERCEL LOG]: AI fetched ${aiRes.data.total_students_fetched} students. Recognized ${aiRes.data.present_roll_nos.length}.`);
               
               aiRes.data.present_roll_nos.forEach(roll => combinedPresentRolls.add(roll));
+              console.log(`set of present student ${combinedPresentRolls}`)
           }
 
           const cloudRes = await uploadOnCloudinary(file.path);
