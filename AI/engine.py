@@ -4,214 +4,151 @@ import io
 import time
 import logging
 import sys
+import os
 import warnings
 from PIL import Image
 from insightface.app import FaceAnalysis
 from sklearn.metrics.pairwise import cosine_similarity
+from pymongo import MongoClient
+from bson import ObjectId
 
 warnings.filterwarnings("ignore")
 
 # ---------------- LOGGING ----------------
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)-8s | %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
+    level=logging.INFO, 
+    format='%(asctime)s | %(levelname)-8s | %(message)s', 
+    handlers=[logging.StreamHandler(sys.stdout)])
 logger = logging.getLogger("AI_Brain")
 
 # ---------------- CONFIG ----------------
 class EngineConfig:
-    
-    # GPU (CUDA) or CPU
     PROVIDERS = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-
-    # ArcFace similarity threshold
-    SIMILARITY_THRESHOLD = 0.40
-
+    
+    # 0.35: Optimized threshold for high-density DTU classrooms
+    SIMILARITY_THRESHOLD = 0.40         
+    
+    # 1280x1280: Critical for detecting students in the back rows
+    DETECTION_SIZE = (1280, 1280)         
+    
+    # Database Configuration (Synced with your Node.js app)
+    MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://sunnypunia905:s3NuwLcX4FasggoM@cluster0.lszh6.mongodb.net")
+    DB_NAME = "AttendanceSystemDB"
 
 # ---------------- ENGINE ----------------
 class FaceEngine:
-
     def __init__(self):
-
         logger.info("=" * 55)
-        logger.info("🚀 INITIALIZING INSIGHTFACE ENGINE")
+        logger.info("🚀 INITIALIZING ATTENDAI CORE ENGINE")
         logger.info("=" * 55)
-
         try:
-            # SCRFD detection + ArcFace recognition
-            self.app = FaceAnalysis(
-                name="buffalo_l",
-                providers=EngineConfig.PROVIDERS
-            )
-
-            # ctx_id = GPU index (0), use -1 for CPU
-            self.app.prepare(ctx_id=0, det_size=(640, 640))
-
-            logger.info("✅ Models Loaded: SCRFD + ArcFace")
-
+            # 1. Initialize Face Models (buffalo_l is highest accuracy)
+            self.app = FaceAnalysis(name="buffalo_l", providers=EngineConfig.PROVIDERS)
+            self.app.prepare(ctx_id=0, det_size=EngineConfig.DETECTION_SIZE)
+            
+            # 2. Initialize Database Connection
+            self.client = MongoClient(EngineConfig.MONGO_URI)
+            self.db = self.client[EngineConfig.DB_NAME]
+            
+            logger.info(f"✅ AI Models Loaded | DB: {EngineConfig.DB_NAME}")
         except Exception as e:
-            logger.error(f"❌ AI Model Load Failed: {e}")
+            logger.error(f"❌ Initialization Failed: {e}")
             raise e
 
-
-    # --------------------------------------------------
-    # IMAGE PREPROCESSING
-    # --------------------------------------------------
-
-    def _preprocess(self, image_bytes):
-
+    def _get_vectors_from_db(self, class_id):
+        """Fetches student vectors directly from MongoDB via the classId."""
         try:
-
-            # convert bytes -> numpy
-            nparr = np.frombuffer(image_bytes, np.uint8)
-
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-            if img is None:
-                image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-                img = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-
-            return img
-
+            clean_id = str(class_id).strip()
+            
+            # A. Access the 'classes' collection
+            target_class = self.db.classes.find_one({"_id": ObjectId(clean_id)})
+            
+            if not target_class:
+                logger.error(f"❌ DB ERROR: Class {clean_id} not found in 'classes' collection.")
+                return []
+            
+            student_ids = target_class.get("students", [])
+            if not student_ids:
+                logger.warning(f"⚠️ WARNING: Class {clean_id} exists but has 0 students enrolled.")
+                return []
+            
+            # B. Fetch biometric vectors
+            cursor = self.db.students.find({"_id": {"$in": student_ids}})
+            
+            known_students = []
+            for s in cursor:
+                # Support both camelCase and lowercase vector fields
+                vector = s.get("faceVector") or s.get("facevector")
+                if vector is not None:
+                    known_students.append({
+                        "roll": s.get("rollNo"),
+                        "vector": np.array(vector, dtype='float32')
+                    })
+            
+            logger.info(f"📊 DATA SYNC: Found {len(known_students)} student profiles for this class.")
+            return known_students
         except Exception as e:
+            logger.error(f"❌ MongoDB Retrieval Failed: {e}")
+            return []
 
-            logger.error(f"Image processing failed: {e}")
-            return None
-
-
-    # --------------------------------------------------
-    # REGISTRATION MODE
-    # --------------------------------------------------
-
-    def get_single_embedding(self, image_bytes):
-
-        start = time.time()
-
-        img = self._preprocess(image_bytes)
-
-        if img is None:
-            return None
-
-        faces = self.app.get(img)
-
-        if not faces:
-            logger.warning("Registration failed: No face detected.")
-            return None
-
-        # choose largest face
-        faces = sorted(
-            faces,
-            key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]),
-            reverse=True
-        )
-
-        embedding = faces[0].embedding.tolist()
-
-        duration = (time.time()-start)*1000
-
-        logger.info(f"⚡ Registration Vector Generated in {duration:.2f} ms")
-
-        return embedding
-
-
-    # --------------------------------------------------
-    # ATTENDANCE MODE
-    # --------------------------------------------------
-
-    def recognize_faces_in_group(self, image_bytes, known_students):
-
+    def recognize_faces_in_group(self, image_bytes, class_id):
+        """Processes attendance and returns both matches and total count."""
         overall_start = time.time()
-
-        latency = {}
-
-        # -----------------------------
-        # PREPROCESSING
-        # -----------------------------
-        t0 = time.time()
-
-        img = self._preprocess(image_bytes)
-
-        latency["preprocessing"] = (time.time()-t0)*1000
-
+        
+        # 1. Image upload and preprocessing
+        preprocess_start = time.time()
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        preprocess_duration = time.time() - preprocess_start
+        
         if img is None:
-            return []
+            return {"present_rolls": [], "total_fetched": 0}
 
-
-        # -----------------------------
-        # FACE DETECTION + ALIGNMENT
-        # -----------------------------
-        t0 = time.time()
-
+        # 2. Face detection using YOLOv8-Face (InsightFace wrapper)
+        detection_start = time.time()
         faces = self.app.get(img)
+        detection_duration = time.time() - detection_start
 
-        latency["face_detection_alignment"] = (time.time()-t0)*1000
+        # 3. Batch embedding extraction
+        embedding_start = time.time()
+        # Extract embeddings into a list for processing
+        detected_embeddings = [face.embedding.reshape(1, -1) for face in faces]
+        embedding_duration = time.time() - embedding_start
 
-        if not faces:
-            logger.info("No faces detected in group photo.")
-            return []
+        # Fetch Data from MongoDB
+        known_students = self._get_vectors_from_db(class_id)
+        total_in_class = len(known_students)
 
-        logger.info(f"📸 Detected {len(faces)} faces.")
+        if not known_students or not detected_embeddings:
+            logger.info(f"Process skipped: Faces: {len(faces)}, Students: {total_in_class}")
+            return {"present_rolls": [], "total_fetched": total_in_class}
 
-        if not known_students:
-            return []
-
-
-        # -----------------------------
-        # BATCH EMBEDDING EXTRACTION
-        # -----------------------------
-        t0 = time.time()
-
-        embeddings = []
-        for face in faces:
-            embeddings.append(face.embedding)
-
-        latency["embedding_extraction_batch"] = (time.time()-t0)*1000
-
-
-        # -----------------------------
-        # VECTOR MATCHING
-        # -----------------------------
-        t0 = time.time()
-
+        # 4. Vector matching
+        match_start = time.time()
         known_vectors = np.array([s["vector"] for s in known_students])
         known_rolls = [s["roll"] for s in known_students]
-
         present_rolls = set()
-
-        for emb in embeddings:
-
-            current_emb = emb.reshape(1, -1)
-
-            similarities = cosine_similarity(current_emb, known_vectors)[0]
-
+        
+        for emb in detected_embeddings:
+            similarities = cosine_similarity(emb, known_vectors)[0]
             best_idx = np.argmax(similarities)
+            
+            if similarities[best_idx] >= EngineConfig.SIMILARITY_THRESHOLD:
+                present_rolls.add(known_rolls[best_idx])
+        
+        # FIXED: match_duration is now outside the loop so it always calculates correctly
+        match_duration = time.time() - match_start
 
-            best_score = similarities[best_idx]
+        # ---------------- LOGS MAPPED TO YOUR REQUIREMENTS ----------------
+        logger.info("-" * 50)
+        logger.info(f"Image upload and preprocessing: {preprocess_duration:.4f} s")
+        logger.info(f"Face detection using YOLOv8-Face: {detection_duration:.4f} s")
+        logger.info(f"Batch embedding extraction is: {embedding_duration:.4f} s")
+        logger.info(f"Vector matching: about {match_duration:.4f} s")
+        logger.info(f"Total Identified: {len(present_rolls)}/{total_in_class}")
+        logger.info("-" * 50)
 
-            if best_score >= EngineConfig.SIMILARITY_THRESHOLD:
-
-                matched_roll = known_rolls[best_idx]
-
-                present_rolls.add(matched_roll)
-
-        latency["vector_matching"] = (time.time()-t0)*1000
-
-
-        # -----------------------------
-        # TOTAL TIME
-        # -----------------------------
-        latency["total"] = (time.time()-overall_start)*1000
-
-
-        # -----------------------------
-        # PRINT LATENCY
-        # -----------------------------
-        logger.info("----- LATENCY (ms) -----")
-
-        for k, v in latency.items():
-
-            logger.info(f"{k:25s}: {v:.2f}")
-
-
-        return list(present_rolls)
+        return {
+            "present_rolls": list(present_rolls),
+            "total_fetched": total_in_class
+        }

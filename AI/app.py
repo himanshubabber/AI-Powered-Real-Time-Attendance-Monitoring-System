@@ -20,6 +20,8 @@ import io
 # Initialize Flask
 app = Flask(__name__)
 
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
 # Initialize AI Engine (Loads Models immediately on startup)
 try:
     engine = FaceEngine()
@@ -68,31 +70,25 @@ def get_embedding():
 def check_attendance():
     if 'image' not in request.files:
         return jsonify({"success": False, "error": "No image provided"}), 400
-        
-    if 'students_data' not in request.form:
-        return jsonify({"success": False, "error": "No student data provided"}), 400
+            
+    # We now look for classId instead of students_data
+    class_id = request.form.get('classId')
+    if not class_id:
+        return jsonify({"success": False, "error": "No classId provided"}), 400
 
     try:
         file = request.files['image']
         image_bytes = file.read()
         
-        # Parse the JSON string from Node.js
-        try:
-            students_list = json.loads(request.form['students_data'])
-        except json.JSONDecodeError:
-            return jsonify({"success": False, "error": "Invalid JSON in students_data"}), 400
+        # Calling the engine which now returns a dictionary
+        result = engine.recognize_faces_in_group(image_bytes, class_id)
         
-        if not students_list:
-            return jsonify({"success": True, "present_roll_nos": []})
-
-        # Run Recognition Logic
-        present_rolls = engine.recognize_faces_in_group(image_bytes, students_list)
-        
+        # result is {"present_rolls": [...], "total_fetched": X}
         return jsonify({
             "success": True,
-            "present_roll_nos": present_rolls
+            "present_roll_nos": result.get("present_rolls", []),
+            "total_students_fetched": result.get("total_fetched", 0)
         })
-
     except Exception as e:
         print(f"Error checking attendance: {e}")
         return jsonify({"success": False, "error": str(e)}), 500

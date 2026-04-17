@@ -1,8 +1,12 @@
+flask
 fastapi
 uvicorn
+gunicorn
 python-multipart
 insightface
 onnxruntime
 opencv-python-headless
 scikit-learn
 Pillow
+pymongo
+dnspython
