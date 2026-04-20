@@ -54,6 +54,31 @@ class FaceEngine:
         except Exception as e:
             logger.error(f"❌ Initialization Failed: {e}")
             raise e
+    
+    def get_single_embedding(self, image_bytes):
+        """Extracts a single embedding for student registration."""
+        try:
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                return None
+
+            # Use a smaller detection size for registration to keep it fast
+            faces = self.app.get(img)
+            
+            if len(faces) == 0:
+                logger.warning("⚠️ Registration Failed: No face detected in profile photo.")
+                return None
+            
+            # If multiple faces are found, take the largest one (the primary subject)
+            faces = sorted(faces, key=lambda x: (x.bbox[2] - x.bbox[0]) * (x.bbox[3] - x.bbox[1]), reverse=True)
+            
+            # Return the embedding as a list so it can be JSON serialized for Node.js
+            return faces[0].embedding.tolist()
+        except Exception as e:
+            logger.error(f"❌ Embedding Extraction Error: {e}")
+            return None
 
     def _get_vectors_from_db(self, class_id):
         """Fetches student vectors directly from MongoDB via the classId."""
